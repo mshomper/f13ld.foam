@@ -11,18 +11,19 @@ Live: https://mshomper.github.io/f13ld.foam
 - **Normalize**: divides the cell-boundary distance by its gradient before subtracting thickness, so walls and struts have one true thickness (2t) everywhere.
 - **Anisotropy**: stretches the distance metric per axis for elongated, load-aligned cells.
 - **Preview**: GPU bake of the four nearest-seed distances per voxel (grid-accelerated, exact), raymarched with guaranteed-safe step lengths; clip plane, 3×3×3 tile check, mm read-outs.
+- **Solid fraction** (v0.4.0): live read-out under the equation, sampled at 48³ from the exact field F13LD.mesh exports and F13LD.lab homogenizes (shown with ≈ for bounded foams, whose faces don't wrap).
 
 ## Handoff
 
-- **Open in F13LD.mesh** sends the recipe after `#r=` in the link. Recipes carry every seed position (up to ~28 KB), and the part after `#` never leaves the browser, so length doesn't matter.
-- Only **periodic** foams can be handed to mesh or added to the queue; otherwise the tool explains why and offers to turn periodic on.
+- **Open in F13LD.mesh** and **Open in F13LD.lab** (v0.4.0, stiffness by FFT homogenization) send the recipe after `#r=` in the link. Recipes carry every seed position (up to ~28 KB), and the part after `#` never leaves the browser, so length doesn't matter.
+- Only **periodic** foams can be handed to mesh or the lab, or added to the queue; otherwise the tool explains why and offers to turn periodic on.
 - **Export JSON** saves the same recipe as a file.
 
 ### Recipe
 
 ```
 { "family": "foam",
-  "meta":     { "tool": "f13ld.foam", "version": "0.3.0", … },
+  "meta":     { "tool": "f13ld.foam", "version": "0.4.0", … },
   "domain":   { "world": [-5, 5], "periodic": true, … },
   "seeds":    { "mode", "count", "regularity", "lloyd_iterations", "rng_seed",
                 "generator": "FoamSeeds/1", "positions": [x, y, z, …] },
