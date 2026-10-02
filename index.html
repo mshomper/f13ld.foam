@@ -1,0 +1,2172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F13LD.foam — discrete cellular scaffolds</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Palette ─────────────────────────────────────────────────────────────
+   Suite neutrals (ground, panels, borders, text) are shared with every F13LD
+   tool. Foam's own identity is the bone/ivory accent; the suite jade + lime
+   appear only where they do in every tool (brand mark, mesh handoff, axes). */
+:root{
+  --bg:#06080f;
+  --panel:#111118;
+  --card:#0e0e1a;
+  --field:#1a1a2e;
+  --border:#2a2a3a;
+  --border2:#3a3a5a;
+  --text:#e0e0ff;
+  --dim:#888;
+  --dimmer:#555;
+  --dimmest:#444;
+  --accent:#E8D4A2;        /* foam ivory */
+  --accent-mid:#C9B27E;
+  --accent-deep:#8B6F3E;
+  --accent-dark:#3a2a14;
+  --accent-soft:#1a1408;
+  --jade:#1D9E75;          /* suite */
+  --lime:#c8f542;          /* suite */
+  --xc:#22d3ee;
+  --yc:#e879f9;
+  --zc:#facc15;
+  --good:#69f0ae;
+  --warn:#f0b35b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:'Exo 2',system-ui,sans-serif}
+#wrap{max-width:1100px;margin:0 auto;padding:20px 16px}
+
+/* ── Unified F13LD header (same structure as F13LD.tpms) ── */
+.f13ld-header{display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-bottom:0.5px solid #1a2a1a;padding:0 14px;height:48px;flex-shrink:0;font-family:'Exo 2',system-ui,sans-serif}
+.fh-left{display:flex;align-items:center;gap:10px}
+.fh-brand{display:flex;align-items:center;gap:8px;text-decoration:none}
+.fh-wordmark{font-size:17px;font-weight:700;letter-spacing:0.1em;line-height:1}
+.fh-divider{width:0.5px;height:24px;background:#1a2a1a}
+.fh-tool-name{font-size:15px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;line-height:1;color:var(--accent-deep)}
+.fh-right{display:flex;align-items:center;gap:10px}
+.fh-version{font-size:10px;color:#3a3324;letter-spacing:0.1em;font-family:'Exo 2',system-ui,sans-serif}
+.fh-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#F3EBD8}
+.fh-mesh-btn{font-size:11px;padding:4px 12px;border:0.5px solid var(--jade);border-radius:20px;background:rgba(29,158,117,0.08);color:var(--jade);cursor:pointer;font-family:inherit;font-weight:600;white-space:nowrap;transition:background 0.15s}
+.fh-mesh-btn:hover{background:rgba(29,158,117,0.18)}
+
+/* ── Viewport ── */
+#cw{position:relative;background:var(--bg);border-radius:12px 12px 0 0;overflow:hidden;border:0.5px solid var(--border);margin-top:10px}
+canvas#c{display:block;width:100%;touch-action:none}
+#axisCanvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:12}
+
+.ovl-btn{
+  background:rgba(6,8,15,0.85);color:var(--dimmer);border:0.5px solid var(--border);
+  border-radius:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:3px 8px;cursor:pointer;
+  transition:color 0.15s,border-color 0.15s;letter-spacing:0.02em
+}
+.ovl-btn.active{color:var(--accent);border-color:var(--accent)}
+#qualityOverlay{position:absolute;bottom:10px;left:10px;display:flex;gap:4px;z-index:13}
+#clipOverlay{position:absolute;bottom:44px;left:10px;display:flex;gap:6px;z-index:13}
+.clip-pill{background:rgba(6,8,15,0.85);color:var(--dimmer);border:0.5px solid var(--border);border-radius:5px;font-size:11px;font-weight:600;letter-spacing:0.04em;padding:4px 9px;cursor:pointer;transition:color 0.15s,border-color 0.15s;font-family:inherit;line-height:1}
+#seedsOverlay{position:absolute;top:10px;left:10px;display:flex;gap:4px;z-index:13}
+#seedsOverlay .count{color:var(--accent-deep);margin-left:3px;font-variant-numeric:tabular-nums}
+#seedsOverlay .ovl-btn.active .count{color:var(--accent)}
+#bakeInfo{
+  position:absolute;bottom:10px;right:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;
+  color:var(--accent-deep);background:rgba(6,8,15,0.85);padding:3px 8px;border-radius:5px;
+  border:0.5px solid var(--accent-dark);z-index:13;letter-spacing:0.04em;max-width:60%;text-align:right
+}
+#bakeInfo.err{color:var(--warn);border-color:#5a4214}
+
+/* ── Panel ── */
+#panel{background:var(--panel);border:0.5px solid var(--border);border-top:none;border-radius:0 0 12px 12px;padding:12px 14px}
+.section-label{font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:0.12em;font-weight:500}
+
+#eqbar-wrap{margin-bottom:10px}
+#eqbar-label{margin-bottom:4px}
+#eqbar{font-family:'IBM Plex Mono',monospace;font-size:13px;color:#aaa;padding:9px 12px;background:#0c0a06;border:0.5px solid var(--accent-deep);border-radius:8px;line-height:1.9;word-break:break-word;min-height:36px;box-shadow:0 0 12px rgba(232,212,162,0.06)}
+#eqbar b{color:var(--text);font-weight:500}
+#eqbar .eq-note{color:#6f6553;font-size:11px}
+
+.mode-strip{display:flex;gap:4px}
+.mode-btn{
+  font-family:'Exo 2',system-ui,sans-serif;font-size:11px;font-weight:500;padding:3px 11px;
+  border:0.5px solid var(--border2);border-radius:20px;background:transparent;color:var(--dim);
+  cursor:pointer;transition:all 0.15s
+}
+.mode-btn.active{background:var(--accent);color:var(--accent-soft);border-color:var(--accent);font-weight:600}
+.mode-btn:hover:not(.active){border-color:var(--accent-deep);color:var(--accent)}
+
+.surf-controls{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-bottom:8px}
+.sc-group{display:flex;align-items:center;gap:6px}
+.sc-group label{font-size:12px;color:var(--dim);white-space:nowrap}
+.sc-group input[type=range]{width:88px;accent-color:var(--accent)}
+.sc-group .sv{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;color:var(--text);min-width:36px;font-variant-numeric:tabular-nums}
+.mm-hint{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dimmest);font-variant-numeric:tabular-nums;margin-left:2px;white-space:nowrap}
+.mm-hint.show{color:#8a7d62}
+.sc-group.hidden{display:none !important}
+
+.cellsize-inp,.num-inp{
+  width:54px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:2px 4px;
+  background:var(--field);border:0.5px solid var(--border2);border-radius:5px;color:var(--text);text-align:center
+}
+.num-inp{width:62px}
+
+.pill-toggle{
+  font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 9px;border:0.5px solid var(--border2);
+  border-radius:14px;background:transparent;color:var(--dim);cursor:pointer;
+  transition:all 0.15s;letter-spacing:0.02em
+}
+.pill-toggle.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-deep)}
+.pill-toggle:hover{border-color:var(--accent-deep)}
+
+.divider{border:none;border-top:0.5px solid var(--border);margin:10px 0}
+.section-header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+
+select.preset-sel{
+  width:100%;font-family:'Exo 2',system-ui,sans-serif;font-size:12px;padding:5px 9px;margin-top:6px;
+  border:0.5px solid var(--border2);border-radius:6px;background:var(--card);color:#bbb;cursor:pointer
+}
+select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
+
+.aniso-row{display:flex;align-items:center;gap:14px;margin-top:8px;flex-wrap:wrap}
+.aniso-row.disabled{opacity:0.35;pointer-events:none}
+.aniso-axis{display:flex;align-items:center;gap:6px}
+.aniso-axis .axis-lbl{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;width:12px;text-align:center}
+.aniso-axis.x .axis-lbl{color:var(--xc)}
+.aniso-axis.y .axis-lbl{color:var(--yc)}
+.aniso-axis.z .axis-lbl{color:var(--zc)}
+.aniso-axis input[type=range]{width:72px}
+.aniso-axis.x input{accent-color:var(--xc)}
+.aniso-axis.y input{accent-color:var(--yc)}
+.aniso-axis.z input{accent-color:var(--zc)}
+.aniso-axis .sv{min-width:34px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text);font-variant-numeric:tabular-nums}
+
+.reseed-btn{
+  font-family:'Exo 2',system-ui,sans-serif;font-size:11px;padding:3px 10px;border:0.5px solid var(--border2);
+  border-radius:20px;background:transparent;color:var(--dim);cursor:pointer;transition:all 0.15s
+}
+.reseed-btn:hover{color:var(--accent);border-color:var(--accent-deep)}
+
+#exportBtn{width:100%;margin-top:8px;font-family:inherit;font-size:12px;padding:6px 14px;border:0.5px solid var(--border2);border-radius:20px;background:transparent;color:var(--dim);cursor:pointer;transition:all 0.15s}
+#exportBtn:hover{color:var(--text);border-color:var(--accent-deep)}
+#footer{font-size:11px;color:var(--dimmest);margin-top:7px}
+#meshWarn{display:none;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding:7px 10px;font-size:12px;line-height:1.5;color:var(--warn);background:rgba(240,179,91,0.07);border:0.5px solid #5a4214;border-radius:8px}
+#meshWarn.show{display:flex}
+#meshWarn span{flex:1 1 260px}
+#meshWarn .mw-close{background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;line-height:1}
+
+@media (max-width:560px){
+  .f13ld-header{flex-wrap:wrap;height:auto;padding:8px 12px 10px;row-gap:8px;column-gap:10px}
+  .fh-right{display:contents}
+  .fh-left{order:0;margin-right:auto}
+  .f13ld-header .f13h-trigger,.fh-version,.fh-icon{order:1}
+  .fh-mesh-btn{order:2;flex:1 1 calc(50% - 5px);min-width:0;text-align:center;padding:7px 6px;font-size:11px;overflow:hidden;text-overflow:ellipsis}
+  #bakeInfo{max-width:48%;font-size:9px}
+}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="f13ld-header">
+    <div class="fh-left">
+      <a class="fh-brand" href="https://f13ld.app" target="_blank">
+        <svg width="24" height="24" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <defs><clipPath id="f13-clip"><path d="M50,5 C91,5 95,9 95,50 C95,91 91,95 50,95 C9,95 5,91 5,50 C5,9 9,5 50,5Z"/></clipPath></defs>
+          <path d="M50,5 C91,5 95,9 95,50 C95,91 91,95 50,95 C9,95 5,91 5,50 C5,9 9,5 50,5Z" fill="#111e13" stroke="#1D9E75" stroke-width="5"/>
+          <g clip-path="url(#f13-clip)" fill="none">
+            <path d="M0,50 Q25,40 50,50 Q75,60 100,50" stroke="#c8f542" stroke-width="6"/>
+            <path d="M50,0 Q40,25 50,50 Q60,75 50,100" stroke="#c8f542" stroke-width="6"/>
+            <path d="M0,31 Q25,21 50,31 Q75,41 100,31" stroke="#2c4e30" stroke-width="3"/>
+            <path d="M0,69 Q25,59 50,69 Q75,79 100,69" stroke="#2c4e30" stroke-width="3"/>
+            <path d="M31,0 Q21,25 31,50 Q41,75 31,100" stroke="#2c4e30" stroke-width="3"/>
+            <path d="M69,0 Q59,25 69,50 Q79,75 69,100" stroke="#2c4e30" stroke-width="3"/>
+            <circle cx="50" cy="50" r="7" fill="#c8f542"/>
+          </g>
+          <path d="M50,5 C91,5 95,9 95,50 C95,91 91,95 50,95 C9,95 5,91 5,50 C5,9 9,5 50,5Z" fill="none" stroke="#1D9E75" stroke-width="5"/>
+        </svg>
+        <div class="fh-wordmark"><span style="color:#1D9E75">F</span><span style="color:#c8f542">1</span><span style="color:#c8f542">3</span><span style="color:#1D9E75">LD</span></div>
+      </a>
+      <div class="fh-divider"></div>
+      <div class="fh-tool-name">FOAM</div>
+    </div>
+    <div class="fh-right">
+      <button class="fh-mesh-btn" onclick="openInMesh()">⬡ Open in F13LD.mesh</button>
+      <span class="fh-version">v0.3.0</span>
+      <div class="fh-icon">
+        <svg width="18" height="18" viewBox="0 0 40 40" fill="none" stroke="#5C4624" stroke-width="1.9" stroke-linejoin="round">
+          <path d="M5 8 L17 4 L24 12 L18 21 L7 19 Z"/>
+          <path d="M24 12 L35 9 L37 22 L27 27 L18 21"/>
+          <path d="M7 19 L18 21 L27 27 L23 37 L9 35 L3 27 Z"/>
+          <path d="M27 27 L37 22"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div id="cw">
+    <canvas id="c"></canvas>
+    <canvas id="axisCanvas"></canvas>
+    <div id="seedsOverlay">
+      <button class="ovl-btn active" id="btnShowSeeds" title="Show seed positions as dots on the foam preview">seeds <span class="count" id="seedCountBadge">0</span></button>
+      <button class="ovl-btn" id="btnTile" title="Show the foam tiled in a 3×3×3 array. With periodic on, the seams should be invisible — that's the check that periodicity is working.">tile: 1×</button>
+    </div>
+    <div id="clipOverlay">
+      <button class="clip-pill" id="clipPillX" data-axis="1">X</button>
+      <button class="clip-pill" id="clipPillY" data-axis="2">Y</button>
+      <button class="clip-pill" id="clipPillZ" data-axis="3">Z</button>
+    </div>
+    <div id="qualityOverlay">
+      <button class="ovl-btn" id="btnQLow" data-q="low">Low</button>
+      <button class="ovl-btn active" id="btnQMed" data-q="medium">Med</button>
+      <button class="ovl-btn" id="btnQHigh" data-q="high">High</button>
+    </div>
+    <div id="bakeInfo">initializing …</div>
+  </div>
+
+  <div id="panel">
+    <div id="meshWarn" role="alert">
+      <span>⚠ This foam isn’t periodic, so it can’t tile into a part in F13LD.mesh. Opposite faces of the cube must match before it can be handed off.</span>
+      <button class="pill-toggle" id="meshWarnFix">turn periodic on</button>
+      <button class="mw-close" id="meshWarnClose" aria-label="Dismiss">×</button>
+    </div>
+    <div id="eqbar-wrap">
+      <div class="section-label" id="eqbar-label">foam field</div>
+      <div id="eqbar"></div>
+    </div>
+
+    <!-- TOPOLOGY + GEOMETRY -->
+    <div class="surf-controls">
+      <div class="sc-group">
+        <label>topology</label>
+        <div class="mode-strip">
+          <button class="mode-btn" id="mOpen" data-topo="open" title="Struts along the edges where 3+ cells meet">open</button>
+          <button class="mode-btn" id="mClosed" data-topo="closed" title="Walls on the faces between neighbouring cells">closed</button>
+          <button class="mode-btn active" id="mPlateau" data-topo="plateau" title="Soap-foam Plateau borders: struts with rounded, swollen junctions">plateau</button>
+        </div>
+      </div>
+      <div class="sc-group">
+        <label>cells</label>
+        <input type="range" id="sCount" min="50" max="800" step="10" value="200">
+        <span class="sv" id="vsCount">200</span>
+        <span class="mm-hint" id="vsCount_mm"></span>
+      </div>
+      <div class="sc-group">
+        <label>cell size</label>
+        <input type="number" id="cellSizeMM" class="cellsize-inp" min="0" step="0.1" value="2" title="Average cell diameter in mm. Display-only — does not affect the JSON export. Stored per-browser.">
+        <span style="font-size:11px;color:var(--dim)">mm</span>
+      </div>
+      <div class="sc-group">
+        <label>thickness</label>
+        <input type="range" id="sThick" min="0.02" max="0.50" step="0.01" value="0.08">
+        <span class="sv" id="vsThick">0.08</span>
+        <span class="mm-hint" id="vsThick_mm"></span>
+        <button class="pill-toggle on" id="normToggle" title="Divide the field by its gradient so thickness is a true perpendicular distance, giving uniform walls and struts. Off = raw level set; thickness varies with the local gradient.">normalize: on</button>
+      </div>
+      <div class="sc-group" id="grp-plateauK">
+        <label>plateau k</label>
+        <input type="range" id="sPlateauK" min="0.01" max="0.20" step="0.01" value="0.05">
+        <span class="sv" id="vsPlateauK">0.05</span>
+      </div>
+      <div class="sc-group">
+        <label>organic</label>
+        <input type="range" id="sOrganic" min="0" max="10" step="0.05" value="0">
+        <span class="sv" id="vsOrganic">0.00</span>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- SEED DISTRIBUTION -->
+    <div class="section-header">
+      <div class="section-label" id="seedLabel">⬢ seed distribution</div>
+      <button class="pill-toggle" id="periodicToggle" title="Opposite faces of the cube share the same seed pattern, so the foam tiles seamlessly when the cube is repeated.">periodic: off</button>
+    </div>
+    <select id="seedMode" class="preset-sel">
+      <optgroup label="stochastic">
+        <option value="poisson" selected>Poisson-disk (blue-noise)</option>
+        <option value="lloyd">Lloyd-relaxed</option>
+        <option value="random">uniform random</option>
+      </optgroup>
+      <optgroup label="lattice">
+        <option value="weairePhelan">Weaire–Phelan</option>
+        <option value="kelvin">Kelvin (BCC truncated octahedra)</option>
+      </optgroup>
+    </select>
+    <div class="surf-controls" style="margin-top:10px">
+      <div class="sc-group" id="grp-spacing">
+        <label>regularity</label>
+        <input type="range" id="sSpacing" min="0.45" max="1.0" step="0.01" value="0.9" title="Minimum seed spacing as a fraction of the tightest spacing that still fits the requested cell count. 1 = most even; lower = more random.">
+        <span class="sv" id="vsSpacing">0.90</span>
+        <span class="mm-hint" id="vsSpacing_mm"></span>
+      </div>
+      <div class="sc-group" id="grp-lloyd">
+        <label>Lloyd iter</label>
+        <input type="range" id="sLloyd" min="0" max="12" step="1" value="4">
+        <span class="sv" id="vsLloyd">4</span>
+      </div>
+      <div class="sc-group" id="grp-rng">
+        <label>RNG seed</label>
+        <input type="number" id="rngSeed" class="num-inp" value="42" step="1">
+        <button class="reseed-btn" id="reseedBtn">↻ reseed</button>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- ANISOTROPY -->
+    <div class="section-header">
+      <div class="section-label" id="anisoLabel">⬢ anisotropy</div>
+      <button class="pill-toggle" id="anisoToggle">off</button>
+    </div>
+    <div class="aniso-row disabled" id="anisoRow">
+      <div class="aniso-axis x"><span class="axis-lbl">X</span><input type="range" id="sAnisoX" min="0.3" max="3.0" step="0.05" value="1.0"><span class="sv" id="vsAnisoX">1.00</span></div>
+      <div class="aniso-axis y"><span class="axis-lbl">Y</span><input type="range" id="sAnisoY" min="0.3" max="3.0" step="0.05" value="1.0"><span class="sv" id="vsAnisoY">1.00</span></div>
+      <div class="aniso-axis z"><span class="axis-lbl">Z</span><input type="range" id="sAnisoZ" min="0.3" max="3.0" step="0.05" value="1.0"><span class="sv" id="vsAnisoZ">1.00</span></div>
+    </div>
+
+    <button id="exportBtn">Export JSON</button>
+    <div id="footer">Drag to rotate · Scroll or pinch to zoom · X/Y/Z cut the view, drag the handle to move the cut · Seeds and tile toggles at top left</div>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// F13LD.foam v0.3.0 — discrete cellular scaffolds
+// Seeds (CPU) → GPU bake of the 4 nearest-seed distances per voxel into a 3D
+// texture → live raymarch of the foam field sampled from that texture, using
+// guaranteed-safe step lengths so rays always reach the far side of the cube.
+// Shell, camera, clip plane, help and handoff follow F13LD.tpms v1.1.0.
+// ============================================================================
+
+const canvas = document.getElementById('c');
+// preserveDrawingBuffer: the F13LD.queue snapshot hook reads the canvas back.
+const gl = canvas.getContext('webgl2', {preserveDrawingBuffer: true});
+if(!gl){
+  canvas.parentElement.innerHTML = '<p style="color:#888;padding:40px;text-align:center">This tool needs WebGL2, which this browser or GPU does not provide.</p>';
+  throw new Error('WebGL2 unavailable');
+}
+
+function $(id){ return document.getElementById(id); }
+
+// Storage can throw (private mode, sandboxed frames) — never let it stop the tool.
+function storeGet(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : v; } catch(e){ return d; } }
+function storeSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+
+// Quality tiers. Bake resolution sets surface cleanness (aim for ≥ 2 voxels
+// across the thinnest feature); step count sets raymarch fidelity.
+const QUALITY_TIERS = {
+  low:    { bake: 128, steps: 192 },   // step counts are caps: with safe long
+  medium: { bake: 160, steps: 256 },   // steps most rays finish far sooner, so
+  high:   { bake: 192, steps: 384 }    // raising them costs little
+};
+let currentQuality = 'medium';
+
+function resize(){
+  const cssW = canvas.parentElement.clientWidth;
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const cssH = Math.min(cssW, 420);
+  const w = Math.round(cssW * dpr), h = Math.round(cssH * dpr);
+  if(canvas.width !== w || canvas.height !== h){ canvas.width = w; canvas.height = h; }
+  canvas.style.height = cssH + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ============================================================================
+// STATE
+// ============================================================================
+const DOMAIN_MIN = -5, DOMAIN_MAX = 5, DOMAIN_SIZE = 10, DOMAIN_HALF = 5;
+const LATTICE_MODES = ['weairePhelan', 'kelvin'];
+
+const state = {
+  topology: 'plateau',
+  count: 200,
+  cellSizeMM: parseFloat(storeGet('f13ld_foam_cellSizeMM', '2')) || 2,
+  thickness: 0.08,
+  plateauK: 0.05,
+  normalize: true,
+  organic: 0,
+  seedMode: 'poisson',
+  regularity: 0.9,     // min spacing as a fraction of the saturating spacing
+  minSpacing: 0,       // derived, internal units (set by regenerateSeeds)
+  lloydIter: 4,
+  rngSeed: 42,
+  aniso: false,
+  anisoX: 1.0, anisoY: 1.0, anisoZ: 1.0,
+  periodic: false,
+  tile: 1,
+  seeds: [],
+  actualCount: 0,
+  showSeeds: true,
+};
+
+// Mean seed spacing (≈ mean cell diameter) for N cells in the 10³ domain.
+function meanSpacing(N){ return DOMAIN_SIZE / Math.cbrt(Math.max(1, N)); }
+
+// ============================================================================
+// SEEDS
+// ============================================================================
+
+// The seed generator is shared byte-for-byte with F13LD.mesh
+// (worker/m25-sdf-foam.js), so mesh can rebuild identical seeds from the
+// recipe settings. Edit both copies together.
+// ==== BEGIN FoamSeeds — shared seed generator ================================
+// Identical copy in F13LD.foam (index.html) and F13LD.mesh
+// (worker/m25-sdf-foam.js). F13LD.mesh tests/foamseeds.js checks the two match
+// byte for byte; edit both together and bump FoamSeeds.VERSION.
+// Domain is the cube [-5, 5]³. Seeds are [x, y, z] arrays.
+const FoamSeeds = (function(){
+  'use strict';
+  const VERSION = 1;
+  const DMIN = -5, DMAX = 5, DSIZE = 10;
+
+  // Mean seed spacing (≈ mean cell diameter) for N cells in the 10³ cube.
+  function meanSpacing(N){ return DSIZE / Math.cbrt(Math.max(1, N)); }
+
+  // Deterministic 32-bit RNG so a seed number gives a reproducible layout.
+  function mulberry32(seedInt){
+    let s = seedInt | 0;
+    return function(){
+      s = (s + 0x6D2B79F5) | 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function wrap1(v){ return ((v - DMIN) % DSIZE + DSIZE) % DSIZE + DMIN; }
+  function minImg(d){ return d - DSIZE * Math.round(d / DSIZE); }
+
+  function genRandom(N, rng){
+    const out = [];
+    for(let i = 0; i < N; i++) out.push([DMIN + rng() * DSIZE, DMIN + rng() * DSIZE, DMIN + rng() * DSIZE]);
+    return out;
+  }
+
+  // Bridson Poisson-disk sampling in 3D, run to saturation (maxN is only a
+  // safety cap). Background grid cell r/√3 → at most one sample per cell, so
+  // the rejection test walks a 5×5×5 block. Periodic: grid wraps, toroidal distance.
+  function genPoisson(rmin, maxN, rng, periodic){
+    const r2 = rmin * rmin;
+    const cellSize = rmin / Math.sqrt(3);
+    const gridSize = Math.max(1, Math.ceil(DSIZE / cellSize));
+    const grid = new Int32Array(gridSize * gridSize * gridSize).fill(-1);
+    const samples = [], active = [];
+    const gridLin = (ix, iy, iz) => (ix * gridSize + iy) * gridSize + iz;
+    const cellIdx = v => Math.min(gridSize - 1, Math.max(0, Math.floor((v - DMIN) / cellSize)));
+    const inDomain = p => p[0] >= DMIN && p[0] <= DMAX && p[1] >= DMIN && p[1] <= DMAX && p[2] >= DMIN && p[2] <= DMAX;
+    function tooClose(p){
+      const ix = cellIdx(p[0]), iy = cellIdx(p[1]), iz = cellIdx(p[2]);
+      for(let dx = -2; dx <= 2; dx++){
+        let nx = ix + dx;
+        if(periodic) nx = (nx + gridSize * 2) % gridSize; else if(nx < 0 || nx >= gridSize) continue;
+        for(let dy = -2; dy <= 2; dy++){
+          let ny = iy + dy;
+          if(periodic) ny = (ny + gridSize * 2) % gridSize; else if(ny < 0 || ny >= gridSize) continue;
+          for(let dz = -2; dz <= 2; dz++){
+            let nz = iz + dz;
+            if(periodic) nz = (nz + gridSize * 2) % gridSize; else if(nz < 0 || nz >= gridSize) continue;
+            const idx = grid[gridLin(nx, ny, nz)];
+            if(idx < 0) continue;
+            const q = samples[idx];
+            let ddx = p[0] - q[0], ddy = p[1] - q[1], ddz = p[2] - q[2];
+            if(periodic){ ddx = minImg(ddx); ddy = minImg(ddy); ddz = minImg(ddz); }
+            if(ddx*ddx + ddy*ddy + ddz*ddz < r2) return true;
+          }
+        }
+      }
+      return false;
+    }
+    function addSample(p){
+      samples.push(p);
+      grid[gridLin(cellIdx(p[0]), cellIdx(p[1]), cellIdx(p[2]))] = samples.length - 1;
+      active.push(samples.length - 1);
+    }
+    // Start fronts from all 8 octants so growth isn't biased to one corner.
+    const half = DSIZE / 2;
+    for(let oi = 0; oi < 2; oi++) for(let oj = 0; oj < 2; oj++) for(let ok = 0; ok < 2; ok++){
+      const cand = [
+        DMIN + (oi + 0.25 + rng() * 0.5) * half,
+        DMIN + (oj + 0.25 + rng() * 0.5) * half,
+        DMIN + (ok + 0.25 + rng() * 0.5) * half
+      ];
+      if(!tooClose(cand)) addSample(cand);
+    }
+    const K = 30;
+    while(active.length > 0 && samples.length < maxN){
+      const ai = Math.floor(rng() * active.length);
+      const ctr = samples[active[ai]];
+      let found = false;
+      for(let attempt = 0; attempt < K; attempt++){
+        const theta = rng() * 2 * Math.PI;
+        const phi = Math.acos(2 * rng() - 1);
+        const radius = rmin * (1 + rng());
+        const sp = Math.sin(phi);
+        let cand = [ctr[0] + radius * sp * Math.cos(theta), ctr[1] + radius * sp * Math.sin(theta), ctr[2] + radius * Math.cos(phi)];
+        if(periodic) cand = [wrap1(cand[0]), wrap1(cand[1]), wrap1(cand[2])];
+        else if(!inDomain(cand)) continue;
+        if(!tooClose(cand)){ addSample(cand); found = true; break; }
+      }
+      if(!found){ active[ai] = active[active.length - 1]; active.pop(); }
+    }
+    return samples;
+  }
+
+  // Saturated Poisson-disk packing in 3D holds ≈ 0.6 samples per r³ (measured:
+  // 0.58 periodic, 0.63–0.68 bounded), so r = 0.84·s0 saturates at ≈ N seeds.
+  // Regularity scales that spacing down. Sampling runs to saturation over the
+  // whole cube, then is thinned at random to exactly N (thinning never reduces
+  // spacing), or topped up by best-candidate insertion if it fell short.
+  const POISSON_SAT = 0.84;
+  function genPoissonCount(N, regularity, rng, periodic){
+    const rmin = regularity * POISSON_SAT * meanSpacing(N);
+    const pts = genPoisson(rmin, 60000, rng, periodic);
+    if(pts.length > N){
+      for(let i = 0; i < N; i++){
+        const j = i + Math.floor(rng() * (pts.length - i));
+        const t = pts[i]; pts[i] = pts[j]; pts[j] = t;
+      }
+      pts.length = N;
+    } else if(pts.length < N){
+      bestCandidateFill(pts, N, rng, periodic);
+    }
+    return {pts, rmin};
+  }
+
+  // Mitchell best-candidate: each new seed is the farthest of 24 random tries.
+  function bestCandidateFill(pts, N, rng, periodic){
+    while(pts.length < N){
+      let best = null, bestD = -1;
+      for(let c = 0; c < 24; c++){
+        const q = [DMIN + rng() * DSIZE, DMIN + rng() * DSIZE, DMIN + rng() * DSIZE];
+        let dmin = Infinity;
+        for(let i = 0; i < pts.length; i++){
+          let dx = q[0] - pts[i][0], dy = q[1] - pts[i][1], dz = q[2] - pts[i][2];
+          if(periodic){ dx = minImg(dx); dy = minImg(dy); dz = minImg(dz); }
+          const d = dx*dx + dy*dy + dz*dz;
+          if(d < dmin){ dmin = d; if(dmin < bestD) break; }
+        }
+        if(dmin > bestD){ bestD = dmin; best = q; }
+      }
+      pts.push(best);
+    }
+    return pts;
+  }
+
+  // Uniform grid over the seeds for fast nearest-seed queries.
+  function buildSeedGrid(seeds){
+    const N = seeds.length;
+    const G = Math.max(1, Math.min(48, Math.floor(DSIZE / meanSpacing(N))));
+    const cs = DSIZE / G;
+    const cellIdx = v => Math.min(G - 1, Math.max(0, Math.floor((v - DMIN) / cs)));
+    const cellOf = new Int32Array(N);
+    const start = new Int32Array(G * G * G + 1);
+    for(let i = 0; i < N; i++){
+      const c = (cellIdx(seeds[i][0]) * G + cellIdx(seeds[i][1])) * G + cellIdx(seeds[i][2]);
+      cellOf[i] = c; start[c + 1]++;
+    }
+    for(let c = 0; c < G * G * G; c++) start[c + 1] += start[c];
+    const fill = start.slice(0, G * G * G);
+    const items = new Int32Array(N);
+    for(let i = 0; i < N; i++) items[fill[cellOf[i]]++] = i;
+    return {G, cs, start, items, cellIdx};
+  }
+
+  // Nearest seed with an expanding search. A seed outside the (2R+1)³ block is
+  // farther than R·cs, so once the best distance is ≤ R·cs the answer is exact.
+  const nn = {i: 0, dx: 0, dy: 0, dz: 0};
+  function nearestSeed(g, seeds, x, y, z, periodic){
+    const {G, cs, start, items} = g;
+    const cx = g.cellIdx(x), cy = g.cellIdx(y), cz = g.cellIdx(z);
+    const maxR = periodic ? Math.ceil(G / 2) : G;
+    let best = Infinity;
+    for(let R = 1; ; R++){
+      for(let a = -R; a <= R; a++){
+        let ix = cx + a; if(periodic) ix = (ix + G * 4) % G; else if(ix < 0 || ix >= G) continue;
+        for(let b = -R; b <= R; b++){
+          let iy = cy + b; if(periodic) iy = (iy + G * 4) % G; else if(iy < 0 || iy >= G) continue;
+          for(let c = -R; c <= R; c++){
+            let iz = cz + c; if(periodic) iz = (iz + G * 4) % G; else if(iz < 0 || iz >= G) continue;
+            const cell = (ix * G + iy) * G + iz;
+            for(let k = start[cell]; k < start[cell + 1]; k++){
+              const s = items[k], sp = seeds[s];
+              let dx = x - sp[0], dy = y - sp[1], dz = z - sp[2];
+              if(periodic){ dx = minImg(dx); dy = minImg(dy); dz = minImg(dz); }
+              const d = dx*dx + dy*dy + dz*dz;
+              if(d < best){ best = d; nn.i = s; nn.dx = dx; nn.dy = dy; nn.dz = dz; }
+            }
+          }
+        }
+      }
+      if(Math.sqrt(best) <= R * cs || R >= maxR) return nn;
+    }
+  }
+
+  // Lloyd relaxation by sampled k-means: every sample point pulls its nearest
+  // seed toward the centroid of its cell. ~40 samples per cell, with the sample
+  // lattice jittered each iteration so it can't alias. Displacement form keeps
+  // the periodic case correct across the wrap.
+  function lloydRelax(seeds, iterations, periodic, rng){
+    const N = seeds.length;
+    if(N === 0 || iterations === 0) return seeds;
+    const sampleRes = Math.min(40, Math.max(16, Math.ceil(Math.cbrt(40 * N))));
+    const step = DSIZE / sampleRes;
+    for(let iter = 0; iter < iterations; iter++){
+      const g = buildSeedGrid(seeds);
+      const sx = new Float64Array(N), sy = new Float64Array(N), sz = new Float64Array(N);
+      const cnt = new Int32Array(N);
+      const jx = (rng() - 0.5) * step, jy = (rng() - 0.5) * step, jz = (rng() - 0.5) * step;
+      for(let ix = 0; ix < sampleRes; ix++){
+        const x = DMIN + (ix + 0.5) * step + jx;
+        for(let iy = 0; iy < sampleRes; iy++){
+          const y = DMIN + (iy + 0.5) * step + jy;
+          for(let iz = 0; iz < sampleRes; iz++){
+            const z = DMIN + (iz + 0.5) * step + jz;
+            const r = nearestSeed(g, seeds, x, y, z, periodic);
+            sx[r.i] += r.dx; sy[r.i] += r.dy; sz[r.i] += r.dz; cnt[r.i]++;
+          }
+        }
+      }
+      for(let s = 0; s < N; s++){
+        if(cnt[s] === 0) continue;
+        let nx = seeds[s][0] + sx[s] / cnt[s];
+        let ny = seeds[s][1] + sy[s] / cnt[s];
+        let nz = seeds[s][2] + sz[s] / cnt[s];
+        if(periodic){ nx = wrap1(nx); ny = wrap1(ny); nz = wrap1(nz); }
+        else {
+          nx = Math.min(DMAX, Math.max(DMIN, nx));
+          ny = Math.min(DMAX, Math.max(DMIN, ny));
+          nz = Math.min(DMAX, Math.max(DMIN, nz));
+        }
+        seeds[s][0] = nx; seeds[s][1] = ny; seeds[s][2] = nz;
+      }
+    }
+    return seeds;
+  }
+
+  // Weaire–Phelan (A15 / Cr3Si positions): 8 seeds per lattice cube.
+  // Kelvin: BCC, 2 per cube → truncated octahedra.
+  const WP_BASIS = [
+    [0, 0, 0], [0.5, 0.5, 0.5],
+    [0.25, 0, 0.5], [0.75, 0, 0.5],
+    [0.5, 0.25, 0], [0.5, 0.75, 0],
+    [0, 0.5, 0.25], [0, 0.5, 0.75]
+  ];
+  const KELVIN_BASIS = [[0, 0, 0], [0.5, 0.5, 0.5]];
+  function genLattice(basis, count){
+    const across = Math.max(1, Math.round(Math.cbrt(count / basis.length)));
+    const cs = DSIZE / across;
+    const out = [];
+    for(let i = 0; i < across; i++) for(let j = 0; j < across; j++) for(let k = 0; k < across; k++)
+      for(const b of basis) out.push([DMIN + (i + b[0]) * cs, DMIN + (j + b[1]) * cs, DMIN + (k + b[2]) * cs]);
+    return out;
+  }
+
+  const MODES = ['poisson', 'lloyd', 'random', 'weairePhelan', 'kelvin'];
+  const LATTICE_MODES = ['weairePhelan', 'kelvin'];
+
+  // One entry point. opts: {mode, count, regularity, lloydIter, rngSeed,
+  // periodic, maxSeeds}. Returns {seeds, minSpacing} (minSpacing 0 when the
+  // mode has no enforced gap). Output is capped at maxSeeds (default 1024).
+  function generate(opts){
+    const rng = mulberry32(opts.rngSeed | 0);
+    const periodic = !!opts.periodic;
+    const count = Math.max(1, opts.count | 0);
+    let seeds = [], minSpacing = 0;
+    switch(opts.mode){
+      case 'poisson': {
+        const r = genPoissonCount(count, opts.regularity, rng, periodic);
+        seeds = r.pts; minSpacing = r.rmin;
+        break;
+      }
+      case 'lloyd': {
+        const r = genPoissonCount(count, opts.regularity, rng, periodic);
+        seeds = lloydRelax(r.pts, opts.lloydIter | 0, periodic, rng);
+        break;
+      }
+      case 'random':       seeds = genRandom(count, rng); break;
+      case 'weairePhelan': seeds = genLattice(WP_BASIS, count); break;
+      case 'kelvin':       seeds = genLattice(KELVIN_BASIS, count); break;
+      default: throw new Error('Unknown foam seed mode "' + opts.mode + '"');
+    }
+    return {seeds: seeds.slice(0, opts.maxSeeds || 1024), minSpacing};
+  }
+
+  return {VERSION, MODES, LATTICE_MODES, meanSpacing, generate};
+})();
+// ==== END FoamSeeds ===========================================================
+
+function regenerateSeeds(){
+  const r = FoamSeeds.generate({
+    mode: state.seedMode, count: state.count, regularity: state.regularity,
+    lloydIter: state.lloydIter, rngSeed: state.rngSeed, periodic: state.periodic,
+    maxSeeds: MAX_BAKE_SEEDS
+  });
+  state.seeds = r.seeds;
+  state.minSpacing = r.minSpacing;
+  state.actualCount = state.seeds.length;
+  updateSeedReadouts();
+  updateMMHints();
+  updateEq();
+}
+
+function updateSeedReadouts(){
+  $('vsCount').textContent = state.actualCount !== state.count
+    ? state.actualCount + ' (target ' + state.count + ')'
+    : String(state.actualCount);
+  $('seedCountBadge').textContent = state.actualCount;
+}
+
+// Debounced regen → bake. Slider drags fire 60+ events/s; coalesce them.
+let regenTimer = null;
+function scheduleRegen(){
+  if(regenTimer) clearTimeout(regenTimer);
+  setBadge('generating seeds …');
+  regenTimer = setTimeout(() => { regenTimer = null; regenerateSeeds(); scheduleBake(); }, 60);
+}
+
+// ============================================================================
+// BAKE — 4 nearest-seed distances per voxel into an RGBA16F 3D texture.
+// Seeds are binned into a uniform grid (cell edge ≈ mean spacing × stretch on
+// each axis) so each voxel checks only nearby seeds: ring 1 (27 cells), then
+// ring 2 (125) if needed, then all seeds — each step is taken only when the
+// 4th-nearest distance can't yet be proven final, so the result is exact.
+// Anisotropy is baked into the metric; the live shader samples raw positions.
+// ============================================================================
+const MAX_BAKE_SEEDS = 1024;
+const TEX_W = 1024;            // width of the 2D lookup textures
+let bakeProg = null, bakeU = {};
+let seedTex = null, cellTex = null, fieldTex = null, fieldRes = 0, bakeFBO = null;
+let bakeReady = false, bakeAvailable = false, bakeError = '';
+let quadBuf = null;
+
+function initQuad(){
+  quadBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+}
+function bindQuad(program){
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  const loc = gl.getAttribLocation(program, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+function mkShader(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+// Link a program and free its shader objects straight away (no leak per rebuild).
+function linkProgram(vsrc, fsrc){
+  const p = gl.createProgram();
+  const vs = mkShader(gl.VERTEX_SHADER, vsrc), fs = mkShader(gl.FRAGMENT_SHADER, fsrc);
+  gl.attachShader(p, vs); gl.attachShader(p, fs);
+  gl.linkProgram(p);
+  gl.detachShader(p, vs); gl.detachShader(p, fs); gl.deleteShader(vs); gl.deleteShader(fs);
+  if(!gl.getProgramParameter(p, gl.LINK_STATUS)){
+    console.error(gl.getProgramInfoLog(p));
+    gl.deleteProgram(p);
+    return null;
+  }
+  return p;
+}
+
+const VERT = '#version 300 es\nin vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}';
+
+function initBakePipeline(){
+  // Rendering into float targets needs EXT_color_buffer_float. RGBA16F is used
+  // because it filters linearly with no extra extension (RGBA32F would need
+  // OES_texture_float_linear, missing on many mobile GPUs).
+  if(!gl.getExtension('EXT_color_buffer_float')){
+    bakeError = 'this GPU can’t render to float textures — bake unavailable';
+    return;
+  }
+  const frag = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+out vec4 fragColor;
+uniform sampler2D uSeeds;   // seeds sorted by grid cell (xyz)
+uniform sampler2D uCells;   // per grid cell: (first index, count)
+uniform int uSeedCount;
+uniform int uRes;
+uniform float uZ;
+uniform vec3 uAnisoInv;
+uniform float uHalf;
+uniform float uPeriodic;
+uniform ivec3 uGrid;
+uniform vec3 uCell;
+uniform float uRm;          // proven-exact radius per ring, in metric units
+uniform int uMaxRing;
+uniform int uMaxPerCell;
+
+vec3 seedAt(int i){ return texelFetch(uSeeds, ivec2(i % ${TEX_W}, i / ${TEX_W}), 0).xyz; }
+
+float metric2(vec3 p, vec3 s, float L){
+  vec3 r = p - s;
+  if(uPeriodic > 0.5) r -= L * floor(r / L + 0.5);   // shortest periodic image
+  r *= uAnisoInv;
+  return dot(r, r);
+}
+void push(float d, inout vec4 D){
+  if(d < D.x)      D = vec4(d, D.x, D.y, D.z);
+  else if(d < D.y) D = vec4(D.x, d, D.y, D.z);
+  else if(d < D.z){ D.w = D.z; D.z = d; }
+  else if(d < D.w) D.w = d;
+}
+
+void main(){
+  float L = 2.0 * uHalf;
+  vec3 p = vec3(gl_FragCoord.x / float(uRes), gl_FragCoord.y / float(uRes), (uZ + 0.5) / float(uRes));
+  p = (p - 0.5) * L;
+  vec4 D = vec4(1e18);
+  bool exact = false;
+  ivec3 c = clamp(ivec3(floor((p + uHalf) / uCell)), ivec3(0), uGrid - 1);
+  for(int R = 1; R <= 2; R++){
+    if(R > uMaxRing) break;
+    D = vec4(1e18);
+    for(int dz = -R; dz <= R; dz++)
+    for(int dy = -R; dy <= R; dy++)
+    for(int dx = -R; dx <= R; dx++){
+      ivec3 q = c + ivec3(dx, dy, dz);
+      if(uPeriodic > 0.5) q = (q + 2 * uGrid) % uGrid;
+      else if(any(lessThan(q, ivec3(0))) || any(greaterThanEqual(q, uGrid))) continue;
+      int ci = q.x + uGrid.x * (q.y + uGrid.y * q.z);
+      vec2 sc = texelFetch(uCells, ivec2(ci % ${TEX_W}, ci / ${TEX_W}), 0).xy;
+      int st = int(sc.x), cnt = int(sc.y);
+      for(int j = 0; j < ${MAX_BAKE_SEEDS}; j++){
+        if(j >= cnt || j >= uMaxPerCell) break;
+        push(metric2(p, seedAt(st + j), L), D);
+      }
+    }
+    if(sqrt(D.w) <= float(R) * uRm){ exact = true; break; }
+  }
+  if(!exact){
+    D = vec4(1e18);
+    for(int i = 0; i < ${MAX_BAKE_SEEDS}; i++){
+      if(i >= uSeedCount) break;
+      push(metric2(p, seedAt(i), L), D);
+    }
+  }
+  // d1..d3 drive the foam field; d4 localises the organic bulge to vertices.
+  fragColor = sqrt(D);
+}`;
+  bakeProg = linkProgram(VERT, frag);
+  if(!bakeProg){ bakeError = 'bake shader failed to compile — see console'; return; }
+  ['uSeeds','uCells','uSeedCount','uRes','uZ','uAnisoInv','uHalf','uPeriodic','uGrid','uCell','uRm','uMaxRing','uMaxPerCell']
+    .forEach(n => bakeU[n] = gl.getUniformLocation(bakeProg, n));
+  bakeFBO = gl.createFramebuffer();
+  seedTex = gl.createTexture();
+  cellTex = gl.createTexture();
+  bakeAvailable = true;
+}
+
+function upload2D(tex, internal, format, data, count, comps){
+  const rows = Math.max(1, Math.ceil(count / TEX_W));
+  const buf = new Float32Array(TEX_W * rows * comps);
+  buf.set(data.subarray(0, Math.min(data.length, buf.length)));
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internal, TEX_W, rows, 0, format, gl.FLOAT, buf);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+
+// Bin seeds into the bake grid and upload both lookup textures.
+function uploadSeedsBinned(a){
+  const seeds = state.seeds, N = seeds.length;
+  const s0 = meanSpacing(N);
+  const G = [0, 1, 2].map(i => Math.max(1, Math.min(40, Math.round(DOMAIN_SIZE / (s0 * a[i])))));
+  const cs = G.map(g => DOMAIN_SIZE / g);
+  const idx = (v, i) => Math.min(G[i] - 1, Math.max(0, Math.floor((v - DOMAIN_MIN) / cs[i])));
+  const nCells = G[0] * G[1] * G[2];
+  const cellOf = new Int32Array(N), counts = new Int32Array(nCells);
+  for(let s = 0; s < N; s++){
+    const c = idx(seeds[s][0], 0) + G[0] * (idx(seeds[s][1], 1) + G[1] * idx(seeds[s][2], 2));
+    cellOf[s] = c; counts[c]++;
+  }
+  const start = new Int32Array(nCells);
+  let maxPer = 0;
+  for(let c = 1; c < nCells; c++) start[c] = start[c - 1] + counts[c - 1];
+  for(let c = 0; c < nCells; c++) maxPer = Math.max(maxPer, counts[c]);
+  const fill = start.slice();
+  const sorted = new Float32Array(N * 4);
+  for(let s = 0; s < N; s++){
+    const k = fill[cellOf[s]]++;
+    sorted[k*4] = seeds[s][0]; sorted[k*4 + 1] = seeds[s][1]; sorted[k*4 + 2] = seeds[s][2];
+  }
+  const cellData = new Float32Array(nCells * 2);
+  for(let c = 0; c < nCells; c++){ cellData[c*2] = start[c]; cellData[c*2 + 1] = counts[c]; }
+
+  gl.activeTexture(gl.TEXTURE0);
+  upload2D(seedTex, gl.RGBA32F, gl.RGBA, sorted, N, 4);
+  gl.activeTexture(gl.TEXTURE1);
+  upload2D(cellTex, gl.RG32F, gl.RG, cellData, nCells, 2);
+
+  // Ring R is exact when the 4th-nearest metric distance ≤ R·min(cs/a).
+  // Periodic grids need 2R+1 ≤ G on every axis or the ring would revisit cells.
+  const minG = Math.min(G[0], G[1], G[2]);
+  const maxRing = state.periodic ? Math.min(2, Math.floor((minG - 1) / 2)) : 2;
+  return {G, cs, maxPer, maxRing, rm: Math.min(cs[0] / a[0], cs[1] / a[1], cs[2] / a[2])};
+}
+
+function ensureFieldTexture(res){
+  if(!(fieldTex && fieldRes === res)){
+    if(fieldTex) gl.deleteTexture(fieldTex);
+    fieldTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_3D, fieldTex);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA16F, res, res, res, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    fieldRes = res;
+  }
+  // Periodic fields wrap so linear filtering blends across the seam (no tile seams).
+  gl.bindTexture(gl.TEXTURE_3D, fieldTex);
+  const w = state.periodic ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, w);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, w);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, w);
+}
+
+function runBake(){
+  bakeTimer = null;
+  if(!bakeAvailable){ setBadge(bakeError || 'bake unavailable', true); return; }
+  if(state.seeds.length < 4){ setBadge('need at least 4 seeds', true); return; }
+  const t0 = performance.now();
+  const res = QUALITY_TIERS[currentQuality].bake;
+  const a = state.aniso ? [state.anisoX, state.anisoY, state.anisoZ] : [1, 1, 1];
+
+  // Unbind the field from unit 0 so it can't be read while it's being written.
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_3D, null);
+  const grid = uploadSeedsBinned(a);
+  ensureFieldTexture(res);
+  gl.bindTexture(gl.TEXTURE_3D, null);
+
+  gl.useProgram(bakeProg);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, seedTex);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, cellTex);
+  gl.uniform1i(bakeU.uSeeds, 0);
+  gl.uniform1i(bakeU.uCells, 1);
+  gl.uniform1i(bakeU.uSeedCount, state.seeds.length);
+  gl.uniform1i(bakeU.uRes, res);
+  gl.uniform1f(bakeU.uHalf, DOMAIN_HALF);
+  gl.uniform3f(bakeU.uAnisoInv, 1 / a[0], 1 / a[1], 1 / a[2]);
+  gl.uniform1f(bakeU.uPeriodic, state.periodic ? 1 : 0);
+  gl.uniform3i(bakeU.uGrid, grid.G[0], grid.G[1], grid.G[2]);
+  gl.uniform3f(bakeU.uCell, grid.cs[0], grid.cs[1], grid.cs[2]);
+  gl.uniform1f(bakeU.uRm, grid.rm);
+  gl.uniform1i(bakeU.uMaxRing, grid.maxRing);
+  gl.uniform1i(bakeU.uMaxPerCell, grid.maxPer);
+  bindQuad(bakeProg);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, bakeFBO);
+  gl.viewport(0, 0, res, res);
+  for(let z = 0; z < res; z++){
+    gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, fieldTex, 0, z);
+    gl.uniform1f(bakeU.uZ, z);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+  // Read back one texel: forces the GPU to finish, so the timing is honest
+  // (gl.finish alone doesn't block in every browser).
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, _syncPx);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, null);
+
+  if(prog){ gl.useProgram(prog); bindQuad(prog); }
+  bakeReady = true;
+  const ms = Math.round(performance.now() - t0);
+  setBadge('baked · ' + res + '³ · ' + state.actualCount + ' cells · ' + ms + ' ms');
+}
+
+function setBadge(text, err){
+  const el = $('bakeInfo');
+  el.textContent = text;
+  el.classList.toggle('err', !!err);
+}
+
+const _syncPx = new Float32Array(4);
+let bakeTimer = null;
+function scheduleBake(){
+  if(bakeTimer) clearTimeout(bakeTimer);
+  setBadge('baking …');
+  bakeTimer = setTimeout(runBake, 30);   // let the badge paint before the GPU blocks
+}
+
+// ============================================================================
+// LIVE SHADER — raymarch of the foam field sampled from the baked texture
+// ============================================================================
+function toFloat(v){
+  const s = parseFloat(parseFloat(v).toFixed(6)).toString();
+  return s.includes('.') || s.includes('e') ? s : s + '.0';
+}
+
+// ── Field definition ────────────────────────────────────────────────────────
+// base = distance-like value that is 0 on the cell boundaries the foam lives on
+//        closed: (d2 − d1)/2 → 0 on faces (2 cells)   open/plateau: (d3 − d1)/2 → 0 on edges (3+ cells)
+// E    = extra material ≥ 0 (plateau junction swell, organic vertex bulge)
+// surface field (solid where < 0):
+//   normalize on : base / |∇base| − t − E   (base / |∇base| ≈ true perpendicular distance → uniform 2t walls)
+//   normalize off: base − t − E             (raw level set; walls swell toward cell corners)
+function baseExpr(){
+  return state.topology === 'closed' ? '(d2 - d1) * 0.5' : '(d3 - d1) * 0.5';
+}
+function organicConsts(){
+  return {amp: state.organic * 2.0, reach: 0.10 + Math.pow(state.organic, 0.6) * 0.25};
+}
+function extraExpr(){
+  const parts = [];
+  if(state.topology === 'plateau')
+    parts.push(toFloat(state.plateauK) + ' * (1.0 - smoothstep(0.0, 0.35, d3 - d1))');
+  // Organic uses (d4 − d1), small only at Voronoi vertices (4+ cells), so the
+  // struts keep their base thickness and only the nodes inflate.
+  if(state.organic > 0){
+    const o = organicConsts();
+    parts.push(toFloat(o.amp) + ' * ' + toFloat(state.thickness) + ' * pow(1.0 - smoothstep(0.0, ' + toFloat(o.reach) + ', d4 - d1), 1.4)');
+  }
+  return parts.length ? parts.join(' + ') : '0.0';
+}
+
+// ── Safe marching constants ─────────────────────────────────────────────────
+// Every dᵢ changes by at most m per unit moved (m = largest 1/stretch, ≥ 1 used),
+// so base changes by ≤ m. The solid always lies inside {base < M·(t + E)} with
+// M = max(1, m) (normalize only shrinks it, since |∇base| ≤ m). So
+//   (base − M·(t + E)) / (M·(1 + L_E))
+// is a guaranteed-safe step distance: the ray can jump that far without
+// skipping any foam. L_E bounds how fast the extras change. The 0.8 covers
+// trilinear texture interpolation and half-float rounding.
+function marchConsts(){
+  const m = state.aniso ? Math.max(1 / state.anisoX, 1 / state.anisoY, 1 / state.anisoZ) : 1;
+  const M = Math.max(1, m);
+  let LE = 0;
+  if(state.topology === 'plateau') LE += state.plateauK * (1.5 / 0.35) * 2 * m;
+  if(state.organic > 0){
+    const o = organicConsts();
+    LE += o.amp * state.thickness * 1.4 * (1.5 / o.reach) * 2 * m;
+  }
+  return {M, invLip: 0.8 / (M * (1 + LE))};
+}
+
+function buildFrag(){
+  const steps = QUALITY_TIERS[currentQuality].steps;
+  const T = toFloat(state.thickness);
+  // Gradient stencil is tied to thickness, not voxel size: a stencil wider than
+  // the strut radius straddles the strut axis (where base has a crease), under-
+  // reads |∇base| and shaves the struts — differently at each bake resolution.
+  // Half the thickness keeps every sample on one side of the crease; trilinear
+  // filtering keeps sub-voxel differences meaningful (floor = ¼ voxel).
+  const surface = state.normalize ? `
+  float e = max(${toFloat(0.5 * state.thickness)}, uVoxelSize * 0.25);
+  float gx = baseAt(p + vec3(e,0,0)) - baseAt(p - vec3(e,0,0));
+  float gy = baseAt(p + vec3(0,e,0)) - baseAt(p - vec3(0,e,0));
+  float gz = baseAt(p + vec3(0,0,e)) - baseAt(p - vec3(0,0,e));
+  float g = sqrt(gx*gx + gy*gy + gz*gz) / (2.0 * e);
+  return b / max(g, 0.05) - ${T} - E;` : `
+  return b - ${T} - E;`;
+
+  return `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler3D;
+out vec4 fragColor;
+uniform vec2 res;
+uniform mat3 rot;
+uniform float zoom;
+uniform sampler3D uField;
+uniform float uHalf;
+uniform float uBakeReady;
+uniform float uVoxelSize;
+uniform float uTile;
+uniform float uPeriodic;
+uniform float uClipAxis;
+uniform float uClipPos;
+uniform float uClipSide;
+uniform float uMarchM;
+uniform float uInvLip;
+
+vec4 sampleD(vec3 p){
+  // Tile mode: fold p back into the canonical cube so the baked field repeats.
+  if(uTile > 1.5) p -= 2.0 * uHalf * floor(p / (2.0 * uHalf) + 0.5);
+  vec3 uvw = p / (2.0 * uHalf) + 0.5;
+  if(uPeriodic < 0.5) uvw = clamp(uvw, vec3(0.0), vec3(1.0));   // periodic: texture wraps
+  return texture(uField, uvw);
+}
+
+void terms(vec3 p, out float base, out float E){
+  vec4 d = sampleD(p);
+  float d1 = d.x, d2 = d.y, d3 = d.z, d4 = d.w;
+  base = ${baseExpr()};
+  E = ${extraExpr()};
+}
+float baseAt(vec3 p){
+  vec4 d = sampleD(p);
+  float d1 = d.x, d2 = d.y, d3 = d.z;
+  return ${baseExpr()};
+}
+
+// Surface field — negative inside the foam.
+float foamField(vec3 p){
+  float b, E;
+  terms(p, b, E);${surface}
+}
+// Conservative marching distance (see marchConsts) — never overshoots the foam.
+float foamMarch(vec3 p){
+  float b, E;
+  terms(p, b, E);
+  return (b - uMarchM * (${T} + E)) * uInvLip;
+}
+
+float boxSDF(vec3 p, float H){
+  vec3 d = abs(p) - H;
+  return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);
+}
+float clipSDF(vec3 p, float H){
+  if(uClipAxis < 0.5) return -1e6;
+  float coord = (uClipAxis < 1.5) ? p.x : ((uClipAxis < 2.5) ? p.y : p.z);
+  float cp = uClipPos * H;
+  return (uClipSide > 0.0) ? (coord - cp) : (cp - coord);
+}
+float sceneSDF(vec3 p){
+  float H = uHalf * uTile;
+  float f = (uBakeReady > 0.5) ? foamField(p) : 1e6;
+  return max(max(f, boxSDF(p, H)), clipSDF(p, H));
+}
+float marchSDF(vec3 p){
+  float H = uHalf * uTile;
+  float f = (uBakeReady > 0.5) ? foamMarch(p) : 1e6;
+  return max(max(f, boxSDF(p, H)), clipSDF(p, H));
+}
+
+vec3 nrm(vec3 p, float e){
+  return normalize(vec3(
+    sceneSDF(p + vec3(e,0,0)) - sceneSDF(p - vec3(e,0,0)),
+    sceneSDF(p + vec3(0,e,0)) - sceneSDF(p - vec3(0,e,0)),
+    sceneSDF(p + vec3(0,0,e)) - sceneSDF(p - vec3(0,0,e))
+  ));
+}
+
+// Bone-ivory iridescent palette
+vec3 palette(float t){
+  vec3 a = vec3(0.65, 0.58, 0.42), b = vec3(0.30, 0.26, 0.18), c = vec3(1.0), d = vec3(0.0, 0.05, 0.10);
+  return clamp(a + b * cos(6.28318 * (c*t + d)), 0.0, 1.0);
+}
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy - res*0.5) / min(res.x, res.y);
+  vec3 ro = rot * vec3(0.0, 0.0, zoom);
+  vec3 rd = normalize(rot * vec3(uv.x, uv.y, -1.6));
+  float H = uHalf * uTile;
+
+  float r = clamp(length(uv) * 1.1, 0.0, 1.0);
+  vec3 bgCol = mix(vec3(0.07), vec3(0.03), r*r);
+  vec4 bg = vec4(bgCol, 1.0);
+
+  float featureSize = max(${T}, 0.04);
+  float camScale = clamp(zoom / (16.0 * uTile), 0.15, 1.0);
+  float thresh = featureSize * 0.010 * camScale;
+  float fineStep = featureSize * 0.30 * camScale;   // cap for steps right at the surface
+  // Normal FD must cross at least one voxel boundary to see the gradient.
+  float nrmE = max(featureSize * 0.20, uVoxelSize * 1.5) * camScale;
+
+  // Ray ∩ cube
+  vec3 iv = vec3(1.0) / rd;
+  vec3 tb = (-vec3(H) - ro) * iv, tt = (vec3(H) - ro) * iv;
+  vec3 tmi = min(tb, tt), tma = max(tb, tt);
+  float tBox = max(max(tmi.x, tmi.y), tmi.z);
+  float tEx = min(min(tma.x, tma.y), tma.z);
+  if(tBox > tEx || tEx < 0.0){ fragColor = bg; return; }
+
+  // Ray ∩ kept side of the clip plane — rays start (or stop) at the cut,
+  // so no steps are spent crossing the empty cut-away half.
+  float tEn = tBox;
+  if(uClipAxis > 0.5){
+    float ro_a = (uClipAxis < 1.5) ? ro.x : ((uClipAxis < 2.5) ? ro.y : ro.z);
+    float rd_a = (uClipAxis < 1.5) ? rd.x : ((uClipAxis < 2.5) ? rd.y : rd.z);
+    float cp = uClipPos * H;
+    float s = (uClipSide > 0.0) ? 1.0 : -1.0;     // kept where s·(coord − cp) < 0
+    float num = s * (cp - ro_a), den = s * rd_a;  // kept where den·t < num
+    if(abs(den) < 1e-6){ if(num < 0.0) tEn = 1e9; }
+    else if(den > 0.0) tEx = min(tEx, num / den);
+    else tEn = max(tEn, num / den);
+  }
+
+  float t = max(tEn, 0.001);
+  bool hit = false;
+  if(tEn <= tEx){
+    for(int i = 0; i < ${steps}; i++){
+      vec3 p = ro + rd*t;
+      float m = marchSDF(p);
+      if(m > thresh){
+        t += m;                                      // safe long step (pores, empty space)
+      } else {
+        float d = sceneSDF(p);                       // near the foam: check the true surface
+        if(d < thresh){ hit = true; break; }
+        t += clamp(d * 0.9, thresh * 0.5, fineStep);
+      }
+      if(t > tEx + 0.01) break;
+    }
+  }
+
+  if(!hit){
+    if(tBox >= 0.0){
+      vec3 pc = ro + rd*tBox, ep = abs(pc)/H;
+      vec2 fp;
+      if(ep.x > ep.y && ep.x > ep.z) fp = ep.yz; else if(ep.y > ep.z) fp = ep.xz; else fp = ep.xy;
+      float ed = min(1.0 - fp.x, 1.0 - fp.y);
+      if(ed < 0.04){ fragColor = mix(bg, vec4(0.91, 0.83, 0.63, 1.0), smoothstep(0.04, 0.005, ed) * 0.35); return; }
+    }
+    fragColor = bg; return;
+  }
+
+  vec3 pos = ro + rd*t;
+  vec3 n = nrm(pos, nrmE);
+  if(dot(n, -rd) < 0.0) n = -n;
+
+  vec3 l1 = normalize(vec3(1.0, 1.8, 2.0));
+  vec3 l2 = normalize(vec3(-0.8, -0.3, 0.6));
+  float l3 = max(dot(n, normalize(vec3(-0.5,-1.0,-1.5))), 0.0) * 0.3;
+  float diff = 0.35 + max(dot(n, l1), 0.0)*0.7 + max(dot(n, l2), 0.0)*0.25 + l3;
+  float spec1 = pow(max(dot(reflect(-l1, n), -rd), 0.0), 80.0) * 0.55;
+  float spec2 = pow(max(dot(reflect(-l1, n), -rd), 0.0), 20.0) * 0.18;
+  float rim = pow(1.0 - max(dot(n, -rd), 0.0), 2.5) * 0.55;
+
+  vec3 bone = vec3(0.91, 0.83, 0.63);
+  vec3 ivory = mix(bone * 0.55, palette(dot(n, vec3(0.3, 0.4, 0.3)) * 0.5 + 0.5), 0.45);
+  vec3 col = ivory * diff + vec3(1.0) * spec1 + bone * spec2 + bone * rim * 0.5;
+
+  // Tint the cut face with the clip axis colour
+  if(uClipAxis > 0.5){
+    vec3 axM = vec3(uClipAxis < 1.5 ? 1.0 : 0.0, (uClipAxis > 1.5 && uClipAxis < 2.5) ? 1.0 : 0.0, uClipAxis > 2.5 ? 1.0 : 0.0);
+    if(abs(dot(pos, axM) - uClipPos * H) < 0.02 * H && abs(dot(n, axM)) > 0.7){
+      vec3 axisCol = uClipAxis < 1.5 ? vec3(0.133, 0.827, 0.933) : uClipAxis < 2.5 ? vec3(0.910, 0.475, 0.977) : vec3(0.980, 0.800, 0.082);
+      col = mix(col, axisCol, 0.30);
+    }
+  }
+  col = mix(bgCol, col, exp(-max(t - tBox, 0.0) * 0.010));
+  fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+}
+
+let prog = null, U = {};
+function rebuildShader(){
+  const p = linkProgram(VERT, buildFrag());
+  if(!p) return;
+  if(prog) gl.deleteProgram(prog);
+  prog = p;
+  gl.useProgram(prog);
+  bindQuad(prog);
+  ['res','rot','zoom','uField','uHalf','uBakeReady','uVoxelSize','uTile','uPeriodic','uClipAxis','uClipPos','uClipSide','uMarchM','uInvLip']
+    .forEach(n => U[n] = gl.getUniformLocation(prog, n));
+  gl.uniform1i(U.uField, 0);
+  updateEq();
+}
+
+// ============================================================================
+// CAMERA — trackball, exponential zoom, pinch, clip-handle scrub
+// ============================================================================
+let rotMat = [1,0,0, 0,1,0, 0,0,1];
+function mat3Mul(A, B){
+  const r = new Array(9);
+  for(let c = 0; c < 3; c++) for(let row = 0; row < 3; row++)
+    r[c*3 + row] = A[row]*B[c*3] + A[3 + row]*B[c*3 + 1] + A[6 + row]*B[c*3 + 2];
+  return r;
+}
+function rotAxisAngle(ax, ay, az, angle){
+  const c = Math.cos(angle), s = Math.sin(angle), t = 1 - c;
+  const l = Math.sqrt(ax*ax + ay*ay + az*az) || 1;
+  ax /= l; ay /= l; az /= l;
+  return [t*ax*ax + c, t*ax*ay + s*az, t*ax*az - s*ay,
+          t*ax*ay - s*az, t*ay*ay + c, t*ay*az + s*ax,
+          t*ax*az + s*ay, t*ay*az - s*ax, t*az*az + c];
+}
+function applyDelta(dx, dy){
+  if(Math.abs(dx) > 0.001) rotMat = mat3Mul(rotAxisAngle(rotMat[3], rotMat[4], rotMat[5], -dx * 0.007), rotMat);
+  if(Math.abs(dy) > 0.001) rotMat = mat3Mul(rotAxisAngle(rotMat[0], rotMat[1], rotMat[2], -dy * 0.007), rotMat);
+}
+function orthonormalize(m){
+  const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+  const scl = (a, s) => [a[0]*s, a[1]*s, a[2]*s];
+  const sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+  const nrm = a => { const l = Math.sqrt(dot(a, a)) || 1; return [a[0]/l, a[1]/l, a[2]/l]; };
+  let x = nrm([m[0], m[1], m[2]]);
+  let y = nrm(sub([m[3], m[4], m[5]], scl(x, dot([m[3], m[4], m[5]], x))));
+  let z = [m[6], m[7], m[8]];
+  z = nrm(sub(sub(z, scl(x, dot(z, x))), scl(y, dot(z, y))));
+  return [...x, ...y, ...z];
+}
+rotMat = mat3Mul(rotAxisAngle(0, 1, 0, 0.7), rotAxisAngle(1, 0, 0, 0.5));
+
+// Camera distance. The cube half-size is 5 (vs π in F13LD.tpms), so the limits
+// are scaled from TPMS's 6–90 range by 5/π; tile mode scales them again.
+const ZOOM_MIN_BASE = 6, ZOOM_MAX_BASE = 140;
+let camZoom = 26, ZOOM_MIN = ZOOM_MIN_BASE, ZOOM_MAX = ZOOM_MAX_BASE, autoRot = true;
+let drag = false, scrub = false, lx = 0, ly = 0, pinch = null;
+
+// Project a world point to CSS pixels — matches the shader camera exactly.
+function project(p, w, h){
+  const tx = rotMat[0]*p[0] + rotMat[1]*p[1] + rotMat[2]*p[2];
+  const ty = rotMat[3]*p[0] + rotMat[4]*p[1] + rotMat[5]*p[2];
+  const tz = rotMat[6]*p[0] + rotMat[7]*p[1] + rotMat[8]*p[2];
+  const pcz = tz - camZoom;
+  if(pcz > -0.1) return null;
+  const s = Math.min(w, h);
+  return [w/2 + (-1.6 * tx / pcz) * s, h/2 - (-1.6 * ty / pcz) * s, -pcz];
+}
+
+const clipState = {axis: 0, pos: 0, side: 1};
+let clipHandle = null;   // screen-space handle for scrubbing, refreshed each frame
+function viewHalf(){ return DOMAIN_HALF * state.tile; }
+function hitHandle(cx, cy){
+  if(!clipHandle) return false;
+  const r = canvas.getBoundingClientRect();
+  return Math.hypot((cx - r.left) - clipHandle.x, (cy - r.top) - clipHandle.y) < 16;
+}
+function applyScrub(cx, cy){
+  if(!clipHandle) return;
+  const pd = (cx - lx) * clipHandle.dirx + (cy - ly) * clipHandle.diry;
+  const dPos = (pd * (clipHandle.axisStep / (clipHandle.len || 1))) / viewHalf();
+  clipState.pos = Math.max(-1, Math.min(1, clipState.pos + dPos));
+}
+
+const touchDist = ts => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+canvas.addEventListener('mousedown', e => {
+  lx = e.clientX; ly = e.clientY; autoRot = false;
+  if(hitHandle(e.clientX, e.clientY)) scrub = true; else drag = true;
+});
+canvas.addEventListener('touchstart', e => {
+  autoRot = false; e.preventDefault();
+  if(e.touches.length >= 2){ pinch = {d0: touchDist(e.touches) || 1, z0: camZoom}; drag = false; scrub = false; return; }
+  lx = e.touches[0].clientX; ly = e.touches[0].clientY;
+  if(hitHandle(lx, ly)) scrub = true; else drag = true;
+}, {passive: false});
+canvas.addEventListener('touchend', e => {
+  if(e.touches.length < 2) pinch = null;
+  // one finger left after a pinch: keep rotating from where it is, no jump
+  if(e.touches.length === 1){ lx = e.touches[0].clientX; ly = e.touches[0].clientY; drag = true; scrub = false; }
+}, {passive: true});
+window.addEventListener('mouseup', () => { drag = false; scrub = false; });
+window.addEventListener('touchend', e => { if(!e.touches || e.touches.length === 0){ drag = false; scrub = false; pinch = null; } });
+window.addEventListener('mousemove', e => {
+  if(scrub) applyScrub(e.clientX, e.clientY);
+  else if(drag) applyDelta(e.clientX - lx, e.clientY - ly);
+  else return;
+  lx = e.clientX; ly = e.clientY;
+});
+window.addEventListener('touchmove', e => {
+  if(pinch && e.touches.length >= 2){
+    camZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinch.z0 * pinch.d0 / (touchDist(e.touches) || 1)));
+    e.preventDefault(); return;
+  }
+  if(!scrub && !drag) return;
+  const t = e.touches[0];
+  if(scrub) applyScrub(t.clientX, t.clientY); else applyDelta(t.clientX - lx, t.clientY - ly);
+  lx = t.clientX; ly = t.clientY;
+  e.preventDefault();
+}, {passive: false});
+canvas.addEventListener('wheel', e => {
+  camZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, camZoom * Math.exp(e.deltaY * 0.0012)));
+  e.preventDefault();
+}, {passive: false});
+
+// ============================================================================
+// OVERLAYS (Canvas2D) — axis labels, seed dots, clip handle
+// ============================================================================
+const AXIS_COLS = ['#22d3ee', '#e879f9', '#facc15'];
+function beginOverlay(w, h){
+  const cv = $('axisCanvas');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  return ctx;
+}
+
+function drawAxisGizmo(ctx, w, h){
+  const H = viewHalf();
+  const cx = rotMat[6], cy = rotMat[7], cz = rotMat[8];
+  const axes = [
+    {p: [0, H, -H],  color: AXIS_COLS[0], label: 'X', vis: Math.max(cy, -cz)},
+    {p: [-H, 0, -H], color: AXIS_COLS[1], label: 'Y', vis: Math.max(-cx, -cz)},
+    {p: [-H, H, 0],  color: AXIS_COLS[2], label: 'Z', vis: Math.max(-cx, cy)}
+  ];
+  ctx.font = "600 13px 'Exo 2', system-ui, sans-serif";
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  axes.forEach(ax => {
+    const alpha = Math.min(1, Math.max(0, ax.vis * 4));
+    if(alpha < 0.01) return;
+    const s = project(ax.p, w, h);
+    if(!s) return;
+    const m = 16;
+    s[0] = Math.max(m, Math.min(w - m, s[0]));
+    s[1] = Math.max(m, Math.min(h - m, s[1]));
+    ctx.globalAlpha = alpha * 0.7; ctx.fillStyle = '#000'; ctx.fillText(ax.label, s[0] + 1, s[1] + 1);
+    ctx.globalAlpha = alpha;       ctx.fillStyle = ax.color; ctx.fillText(ax.label, s[0], s[1]);
+    ctx.globalAlpha = 1;
+  });
+}
+
+// Seed dots for every tiled copy; dots on the cut-away side of the clip are hidden.
+function drawSeedDots(ctx, w, h){
+  if(!state.showSeeds || state.seeds.length === 0) return;
+  ctx.fillStyle = 'rgba(232, 212, 162, 0.85)';
+  const half = (state.tile - 1) / 2, L = DOMAIN_SIZE;
+  const ax = clipState.axis - 1, cp = clipState.pos * viewHalf();
+  const p = [0, 0, 0];
+  for(let ti = -half; ti <= half; ti++) for(let tj = -half; tj <= half; tj++) for(let tk = -half; tk <= half; tk++){
+    for(const sp of state.seeds){
+      p[0] = sp[0] + ti * L; p[1] = sp[1] + tj * L; p[2] = sp[2] + tk * L;
+      if(ax >= 0 && (clipState.side > 0 ? p[ax] > cp : p[ax] < cp)) continue;
+      const s = project(p, w, h);
+      if(!s) continue;
+      ctx.beginPath();
+      ctx.arc(s[0], s[1], Math.max(1.0, Math.min(3.0, 28 * state.tile / s[2])), 0, 6.2832);
+      ctx.fill();
+    }
+  }
+}
+
+function drawClipHandle(ctx, w, h){
+  clipHandle = null;
+  if(clipState.axis < 1) return;
+  const H = viewHalf(), a = clipState.axis - 1, cp = clipState.pos * H;
+  const c = [0, 0, 0]; c[a] = cp;
+  const sc = project(c, w, h);
+  if(!sc) return;
+  const col = AXIS_COLS[a];
+  const free = [0, 1, 2].filter(k => k !== a);
+  const pts = [[-1,-1], [1,-1], [1,1], [-1,1]].map(g => { const q = [0, 0, 0]; q[a] = cp; q[free[0]] = g[0] * H; q[free[1]] = g[1] * H; return project(q, w, h); });
+  ctx.save();
+  if(pts.every(Boolean)){
+    ctx.globalAlpha = 0.5; ctx.lineWidth = 1.5; ctx.strokeStyle = col;
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    for(let i = 1; i < 4; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath(); ctx.stroke();
+  }
+  ctx.globalAlpha = 0.95; ctx.lineWidth = 2; ctx.strokeStyle = col;
+  ctx.beginPath(); ctx.arc(sc[0], sc[1], 9, 0, 6.2832); ctx.stroke();
+  ctx.globalAlpha = 1; ctx.fillStyle = col;
+  ctx.beginPath(); ctx.arc(sc[0], sc[1], 3.2, 0, 6.2832); ctx.fill();
+  ctx.restore();
+  const step = 0.4 * state.tile;
+  const e = [0, 0, 0]; e[a] = cp + step;
+  const se = project(e, w, h);
+  let dirx = 0, diry = 0, len = 0;
+  if(se){ const dx = se[0] - sc[0], dy = se[1] - sc[1]; len = Math.hypot(dx, dy) || 1; dirx = dx / len; diry = dy / len; }
+  clipHandle = {x: sc[0], y: sc[1], dirx, diry, len, axisStep: step};
+}
+
+function updateClipPills(){
+  [1, 2, 3].forEach(a => {
+    const el = $('clipPill' + 'XYZ'[a - 1]);
+    const on = clipState.axis === a;
+    el.classList.toggle('active', on);
+    el.style.color = on ? AXIS_COLS[a - 1] : '';
+    el.style.borderColor = on ? AXIS_COLS[a - 1] : '';
+  });
+}
+
+// ============================================================================
+// READOUTS — mm hints and the field bar
+// ============================================================================
+// "cell size" = mean cell diameter ≈ mean seed spacing s0 = 10 / ∛N (internal).
+function mmFactor(){
+  return state.cellSizeMM > 0 && state.actualCount > 0 ? state.cellSizeMM / meanSpacing(state.actualCount) : 0;
+}
+function setHint(id, text){
+  const el = $(id);
+  el.textContent = text ? '(' + text + ')' : '';
+  el.classList.toggle('show', !!text);
+}
+function updateMMHints(){
+  const f = mmFactor();
+  if(!f){ ['vsCount_mm', 'vsThick_mm', 'vsSpacing_mm'].forEach(id => setHint(id, '')); return; }
+  setHint('vsCount_mm', 'cube ' + (DOMAIN_SIZE * f).toFixed(2) + ' mm');
+  // The surface sits at distance t from the wall mid-plane / strut axis on both
+  // sides, so the full wall (or strut diameter) is 2t. Exact with normalize on
+  // (the gradient is taken in real space, so this holds with anisotropy too);
+  // approximate (~) with it off, where walls swell toward cell corners.
+  const approx = state.normalize ? '' : '~';
+  const what = state.topology === 'closed' ? 'wall ' : 'strut Ø ';
+  setHint('vsThick_mm', what + approx + (2 * state.thickness * f).toFixed(3) + ' mm');
+  setHint('vsSpacing_mm', state.minSpacing > 0 ? 'min gap ' + (state.minSpacing * f).toFixed(2) + ' mm' : '');
+}
+
+function updateEq(){
+  const bar = $('eqbar');
+  const t = '<b>' + state.thickness.toFixed(2) + '</b>';
+  let e = state.topology === 'closed' ? '(d₂ − d₁)/2' : '(d₃ − d₁)/2';
+  if(state.normalize) e = e + ' ÷ ‖∇‖';
+  e = e + ' − ' + t;
+  if(state.topology === 'plateau') e = e + ' − <b>' + state.plateauK.toFixed(2) + '</b>·(1 − smoothstep(0, 0.35, d₃ − d₁))';
+  if(state.organic > 0) e = e + ' − <b>' + (2 * state.organic).toFixed(2) + '</b>·t·bulge(d₄ − d₁)';
+  const metric = state.aniso
+    ? 'dᵢ = i-th nearest seed, measured as ‖(p − s) ÷ (' + [state.anisoX, state.anisoY, state.anisoZ].map(v => v.toFixed(2)).join(', ') + ')‖'
+    : 'dᵢ = distance to the i-th nearest seed';
+  const notes = [metric, state.actualCount + ' seeds', state.periodic ? 'periodic' : 'bounded'];
+  bar.innerHTML = e + ' &lt; 0<br><span class="eq-note">' + notes.join(' · ') + '</span>';
+}
+
+// Any change to the design resets the export button's confirmation state.
+function onDesignChange(){
+  const b = $('exportBtn');
+  b.textContent = 'Export JSON'; b.style.borderColor = ''; b.style.color = '';
+}
+
+// ============================================================================
+// UI WIRING — each control triggers only the work it needs:
+//   shader rebuild (field shape) · seed regen + bake · bake only · display only
+// ============================================================================
+function bindRange(id, key, fmt, onChange){
+  const el = $(id);
+  el.value = state[key];
+  $('v' + id).textContent = fmt(state[key]);
+  el.addEventListener('input', () => {
+    state[key] = parseFloat(el.value);
+    $('v' + id).textContent = fmt(state[key]);
+    onChange();
+    onDesignChange();
+  });
+}
+const f2 = v => v.toFixed(2), fi = v => String(Math.round(v));
+const shaderChange = () => { rebuildShader(); updateMMHints(); };
+
+bindRange('sThick', 'thickness', f2, shaderChange);
+bindRange('sPlateauK', 'plateauK', f2, shaderChange);
+bindRange('sOrganic', 'organic', f2, shaderChange);
+bindRange('sCount', 'count', fi, scheduleRegen);
+bindRange('sSpacing', 'regularity', f2, scheduleRegen);
+bindRange('sLloyd', 'lloydIter', fi, scheduleRegen);
+const anisoChange = () => { scheduleBake(); updateEq(); updateMMHints(); };
+bindRange('sAnisoX', 'anisoX', f2, anisoChange);
+bindRange('sAnisoY', 'anisoY', f2, anisoChange);
+bindRange('sAnisoZ', 'anisoZ', f2, anisoChange);
+
+document.querySelectorAll('.mode-btn[data-topo]').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('.mode-btn[data-topo]').forEach(b => b.classList.toggle('active', b === btn));
+  state.topology = btn.dataset.topo;
+  $('grp-plateauK').classList.toggle('hidden', state.topology !== 'plateau');
+  shaderChange(); onDesignChange();
+}));
+$('grp-plateauK').classList.toggle('hidden', state.topology !== 'plateau');
+
+document.querySelectorAll('#qualityOverlay .ovl-btn').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('#qualityOverlay .ovl-btn').forEach(b => b.classList.toggle('active', b === btn));
+  currentQuality = btn.dataset.q;
+  rebuildShader();   // step count is compiled in
+  scheduleBake();    // bake resolution follows quality
+}));
+
+function setToggle(el, on, text){ el.classList.toggle('on', on); el.textContent = text; }
+
+$('normToggle').addEventListener('click', function(){
+  state.normalize = !state.normalize;
+  setToggle(this, state.normalize, 'normalize: ' + (state.normalize ? 'on' : 'off'));
+  shaderChange(); onDesignChange();
+});
+
+$('anisoToggle').addEventListener('click', function(){
+  state.aniso = !state.aniso;
+  setToggle(this, state.aniso, state.aniso ? 'on' : 'off');
+  $('anisoRow').classList.toggle('disabled', !state.aniso);
+  anisoChange(); onDesignChange();
+});
+
+function setPeriodic(on){
+  state.periodic = on;
+  setToggle($('periodicToggle'), on, 'periodic: ' + (on ? 'on' : 'off'));
+  if(on) hideMeshWarning();
+}
+$('periodicToggle').addEventListener('click', () => { setPeriodic(!state.periodic); scheduleRegen(); onDesignChange(); });
+$('meshWarnFix').addEventListener('click', () => { setPeriodic(true); scheduleRegen(); onDesignChange(); });
+$('meshWarnClose').addEventListener('click', hideMeshWarning);
+
+function syncSeedModeUI(){
+  const m = state.seedMode, lattice = LATTICE_MODES.includes(m);
+  $('grp-spacing').classList.toggle('hidden', !(m === 'poisson' || m === 'lloyd'));
+  $('grp-lloyd').classList.toggle('hidden', m !== 'lloyd');
+  $('grp-rng').classList.toggle('hidden', lattice);   // lattices never change with the RNG
+}
+$('seedMode').addEventListener('change', function(){
+  const wasLattice = LATTICE_MODES.includes(state.seedMode);
+  state.seedMode = this.value;
+  // Lattices are periodic by nature: switch periodic on when entering one
+  // (still user-overridable afterwards).
+  if(LATTICE_MODES.includes(state.seedMode) && !wasLattice) setPeriodic(true);
+  syncSeedModeUI();
+  scheduleRegen(); onDesignChange();
+});
+
+$('rngSeed').addEventListener('input', function(){
+  const v = parseInt(this.value, 10);
+  if(isNaN(v)) return;
+  state.rngSeed = v;
+  scheduleRegen(); onDesignChange();
+});
+$('reseedBtn').addEventListener('click', () => {
+  state.rngSeed = Math.floor(Math.random() * 100000);
+  $('rngSeed').value = state.rngSeed;
+  scheduleRegen(); onDesignChange();
+});
+
+$('btnShowSeeds').addEventListener('click', function(){
+  state.showSeeds = !state.showSeeds;
+  this.classList.toggle('active', state.showSeeds);
+});
+
+// Tile 1× ↔ 3×: scale camera distance and zoom limits so the view stays framed.
+$('btnTile').addEventListener('click', function(){
+  const next = state.tile === 1 ? 3 : 1;
+  camZoom *= next / state.tile;
+  state.tile = next;
+  ZOOM_MIN = ZOOM_MIN_BASE * next; ZOOM_MAX = ZOOM_MAX_BASE * next;
+  this.textContent = 'tile: ' + next + '×';
+  this.classList.toggle('active', next !== 1);
+});
+
+document.querySelectorAll('.clip-pill').forEach(el => el.addEventListener('click', () => {
+  const a = parseInt(el.dataset.axis, 10);
+  if(clipState.axis === a) clipState.axis = 0;
+  else { clipState.axis = a; clipState.pos = 0; clipState.side = 1; }
+  updateClipPills();
+}));
+
+$('cellSizeMM').value = state.cellSizeMM;
+$('cellSizeMM').addEventListener('input', function(){
+  const v = parseFloat(this.value);
+  if(isNaN(v) || v < 0) return;
+  state.cellSizeMM = v;
+  storeSet('f13ld_foam_cellSizeMM', String(v));
+  updateMMHints();
+});
+
+// ============================================================================
+// EXPORT — JSON recipe (layout follows F13LD.tpms: meta / family / … / geometry)
+// v0.3.0: carries family:'foam' so F13LD.mesh routes it, and the seed
+// positions themselves (4 decimals ≈ 0.18 µm at a 2 mm cell) so mesh rebuilds
+// exactly what the preview shows. The generator settings stay alongside, so
+// mesh can regenerate the same seeds if positions are ever missing.
+// ============================================================================
+const SEED_MODE_LABELS = {poisson: 'Poisson-disk', lloyd: 'Lloyd-relaxed', random: 'uniform random', weairePhelan: 'Weaire–Phelan', kelvin: 'Kelvin'};
+function buildExportJSON(){
+  const positions = [];
+  for(const sp of state.seeds) positions.push(+sp[0].toFixed(4), +sp[1].toFixed(4), +sp[2].toFixed(4));
+  const f = mmFactor();
+  return {
+    family: 'foam',
+    meta: {
+      tool: 'f13ld.foam',
+      version: '0.3.0',
+      timestamp: new Date().toISOString(),
+      preset: SEED_MODE_LABELS[state.seedMode] + ' · ' + state.topology
+    },
+    domain: {
+      world: [DOMAIN_MIN, DOMAIN_MAX],
+      periodic: state.periodic,
+      bake_res: QUALITY_TIERS[currentQuality].bake
+    },
+    seeds: {
+      mode: state.seedMode,
+      count: state.count,
+      count_actual: state.actualCount,
+      regularity: (state.seedMode === 'poisson' || state.seedMode === 'lloyd') ? state.regularity : null,
+      min_spacing: state.minSpacing > 0 ? parseFloat(state.minSpacing.toFixed(6)) : null,
+      lloyd_iterations: state.seedMode === 'lloyd' ? state.lloydIter : null,
+      rng_seed: LATTICE_MODES.includes(state.seedMode) ? null : state.rngSeed,
+      generator: 'FoamSeeds/' + FoamSeeds.VERSION,
+      positions: positions
+    },
+    anisotropy: {
+      enabled: state.aniso,
+      stretch: [state.anisoX, state.anisoY, state.anisoZ]
+    },
+    geometry: {
+      mode: state.topology,
+      thickness: state.thickness,
+      plateau_k: state.topology === 'plateau' ? state.plateauK : null,
+      organic: state.organic,
+      normalize: state.normalize,
+      // Edge of the repeating cube in mm at the cell size set here; F13LD.mesh
+      // uses it as its default cell size. null when no cell size is set.
+      tile_mm: f ? parseFloat((DOMAIN_SIZE * f).toFixed(4)) : null
+    }
+  };
+}
+
+// F13LD.mesh only takes periodic foam: a non-periodic cube can't tile into a
+// part. Mesh-bound actions (Open in F13LD.mesh, Add to queue) check here first
+// and explain instead of handing over a recipe mesh would refuse.
+function meshReadyRecipe(){
+  if(!state.periodic){ showMeshWarning(); return null; }
+  hideMeshWarning();
+  return buildExportJSON();
+}
+function showMeshWarning(){ $('meshWarn').classList.add('show'); }
+function hideMeshWarning(){ $('meshWarn').classList.remove('show'); }
+
+// Foam recipes carry every seed position (up to ~28 KB), too long for a "?"
+// link the server must accept. After "#" the recipe never leaves the browser,
+// so length doesn't matter; F13LD.mesh reads it with loaders/ld-hash.js.
+function openInMesh(){
+  const data = meshReadyRecipe();
+  if(!data) return;
+  window.open('https://mshomper.github.io/f13ld.mesh/#r=' + encodeURIComponent(JSON.stringify(data)), '_blank');
+}
+
+$('exportBtn').addEventListener('click', function(){
+  const data = buildExportJSON();
+  const json = JSON.stringify(data, null, 2);
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const blob = new Blob([json], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'foam_' + state.seedMode + '_' + state.topology + '_' + ts + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  if(navigator.clipboard) navigator.clipboard.writeText(json).catch(() => {});
+  const orig = 'Export JSON';
+  this.textContent = 'Copied + downloaded ✓'; this.style.borderColor = 'var(--good)'; this.style.color = 'var(--good)';
+  setTimeout(() => { this.textContent = orig; this.style.borderColor = ''; this.style.color = ''; }, 1800);
+});
+
+// ============================================================================
+// RENDER LOOP
+// ============================================================================
+let lastTs = 0;
+function frame(ts){
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts;
+  if(autoRot) applyDelta(dt * 50, 0);
+  rotMat = orthonormalize(rotMat);
+  if(prog){
+    gl.useProgram(prog);
+    // Rebind the field every frame: the bake pass uses the same texture unit.
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_3D, fieldTex);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.uniform2f(U.res, canvas.width, canvas.height);
+    gl.uniformMatrix3fv(U.rot, false, new Float32Array(rotMat));
+    gl.uniform1f(U.zoom, camZoom);
+    gl.uniform1f(U.uHalf, DOMAIN_HALF);
+    gl.uniform1f(U.uBakeReady, bakeReady && fieldTex ? 1 : 0);
+    gl.uniform1f(U.uVoxelSize, fieldRes > 0 ? DOMAIN_SIZE / fieldRes : 0.1);
+    gl.uniform1f(U.uTile, state.tile);
+    gl.uniform1f(U.uPeriodic, state.periodic ? 1 : 0);
+    gl.uniform1f(U.uClipAxis, clipState.axis);
+    gl.uniform1f(U.uClipPos, clipState.pos);
+    gl.uniform1f(U.uClipSide, clipState.side);
+    const mc = marchConsts();
+    gl.uniform1f(U.uMarchM, mc.M);
+    gl.uniform1f(U.uInvLip, mc.invLip);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const ctx = beginOverlay(w, h);
+  drawSeedDots(ctx, w, h);
+  drawAxisGizmo(ctx, w, h);
+  drawClipHandle(ctx, w, h);
+  requestAnimationFrame(frame);
+}
+
+// ============================================================================
+// INIT — one seed pass, one bake
+// ============================================================================
+initQuad();
+syncSeedModeUI();
+regenerateSeeds();
+rebuildShader();
+initBakePipeline();
+runBake();
+requestAnimationFrame(frame);
+</script>
+
+<!-- ===================================================================== -->
+<!-- ==========  F13LD HELP SYSTEM  ·  modular drop-in (v1.1)  ============ -->
+<!-- Per-tool parts: (1) #f13h-theme :root vars  (2) the CONFIG block.     -->
+<!-- The #f13h-style engine CSS and the script engine are identical        -->
+<!-- across tools. v1.1: auto drawer alignment to header right edge,       -->
+<!-- single --f13h-glow accent var, generalized "i" anchor scheme.         -->
+<!-- ===================================================================== -->
+
+<!-- ---- PER-TOOL THEME (only block that changes color per tool) -------- -->
+<style id="f13h-theme">
+  :root{
+    --f13h-accent:      #E8D4A2;
+    --f13h-accent-soft: #C9B27E;
+    --f13h-panel:       #0e0e1a;
+    --f13h-panel2:      #1a1a2e;
+    --f13h-bg:          #06080f;
+    --f13h-border:      #2a2a3a;
+    --f13h-border-hi:   #3a3a5a;
+    --f13h-text:        #e0e0ff;
+    --f13h-dim:         #8a8a9e;
+    --f13h-bright:      #f0f1ff;
+    --f13h-glow:        rgba(232,212,162,0.22);
+  }
+</style>
+
+<!-- ---- ENGINE CSS (identical across tools) --------------------------- -->
+<style id="f13h-style">
+  .f13h-trigger{
+    width:28px;height:28px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:transparent;border:0.5px solid var(--f13h-border-hi,#5C4624);
+    color:var(--f13h-dim,#8B7A5C);font-family:'Exo 2',system-ui,sans-serif;
+    font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;
+    transition:all .15s ease;line-height:1;padding:0;
+  }
+  .f13h-trigger:hover{color:var(--f13h-accent,#F59E0B);border-color:var(--f13h-accent,#F59E0B);
+    box-shadow:0 0 8px var(--f13h-glow,rgba(245,158,11,0.25));}
+  .f13h-trigger.active{color:var(--f13h-accent,#F59E0B);border-color:var(--f13h-accent,#F59E0B);}
+  .f13h-i{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:14px;height:14px;border-radius:50%;
+    border:0.5px solid var(--f13h-border-hi,#5C4624);color:var(--f13h-dim,#8B7A5C);
+    background:transparent;font-size:9px;font-weight:700;font-style:italic;
+    font-family:Georgia,'Times New Roman',serif;
+    cursor:pointer;margin-left:6px;flex-shrink:0;vertical-align:middle;
+    transition:all .15s ease;padding:0;line-height:1;
+  }
+  .f13h-i:hover{color:var(--f13h-bg,#0F0B07);background:var(--f13h-accent,#F59E0B);border-color:var(--f13h-accent,#F59E0B);}
+  .f13h-scrim{
+    position:fixed;inset:0;background:rgba(4,5,9,0.55);
+    -webkit-backdrop-filter:blur(1.5px);backdrop-filter:blur(1.5px);
+    opacity:0;pointer-events:none;transition:opacity .22s ease;z-index:998;
+  }
+  .f13h-scrim.open{opacity:1;pointer-events:auto;}
+  .f13h-drawer{
+    position:fixed;top:48px;right:0;
+    width:min(440px,100vw);max-height:calc(100vh - 64px);
+    background:var(--f13h-panel,#15100A);
+    border:0.5px solid var(--f13h-border,#3A2D1A);border-top:none;
+    border-radius:0 0 0 14px;
+    box-shadow:0 20px 50px rgba(0,0,0,0.5);
+    display:flex;flex-direction:column;
+    transform:translateY(calc(-100% - 48px));opacity:0;pointer-events:none;
+    transition:transform .28s cubic-bezier(.22,.61,.36,1),opacity .2s ease;
+    z-index:999;font-family:'Exo 2',system-ui,sans-serif;
+  }
+  .f13h-drawer.open{transform:translateY(0);opacity:1;pointer-events:auto;}
+  @media (max-width:480px){ .f13h-drawer{width:100vw;border-radius:0;right:0 !important;} }
+  .f13h-head{
+    display:flex;align-items:center;gap:10px;
+    padding:13px 16px 11px;border-bottom:0.5px solid var(--f13h-border,#3A2D1A);flex-shrink:0;
+  }
+  .f13h-head h2{ font-size:13px;font-weight:700;letter-spacing:0.06em;color:var(--f13h-bright,#FEF3C7);margin:0; }
+  .f13h-head h2 b{color:var(--f13h-accent,#F59E0B);font-weight:700;}
+  .f13h-head h2 span{font-size:9px;letter-spacing:0.14em;color:var(--f13h-dim,#8B7A5C);text-transform:uppercase;margin-left:6px;}
+  .f13h-tut{
+    margin-left:auto;font-size:10px;letter-spacing:0.04em;color:var(--f13h-accent,#F59E0B);
+    text-decoration:none;border:0.5px solid var(--f13h-accent-soft,#D97706);border-radius:20px;
+    padding:3px 10px;white-space:nowrap;transition:background .15s;
+  }
+  .f13h-tut:hover{background:var(--f13h-glow,rgba(245,158,11,0.12));}
+  .f13h-close{
+    width:24px;height:24px;border-radius:6px;border:none;background:transparent;
+    color:var(--f13h-dim,#8B7A5C);font-size:18px;cursor:pointer;line-height:1;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;
+  }
+  .f13h-close:hover{color:var(--f13h-bright,#FEF3C7);background:var(--f13h-panel2,#1C160D);}
+  .f13h-body{overflow-y:auto;padding:4px 16px 20px;}
+  .f13h-intro{font-size:11px;line-height:1.55;color:var(--f13h-dim,#8B7A5C);margin:12px 0 4px;padding-bottom:4px;}
+  .f13h-section-t{
+    font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:var(--f13h-accent,#F59E0B);
+    margin:18px 0 8px;display:flex;align-items:center;gap:7px;
+  }
+  .f13h-section-t::before{content:"";width:4px;height:4px;border-radius:50%;
+    background:var(--f13h-accent,#F59E0B);box-shadow:0 0 6px var(--f13h-accent,#F59E0B);}
+  .f13h-card{
+    background:var(--f13h-panel2,#1C160D);border:0.5px solid var(--f13h-border,#3A2D1A);
+    border-radius:9px;padding:11px 12px;margin-bottom:8px;
+    transition:border-color .25s ease,box-shadow .25s ease;
+  }
+  .f13h-card.flash{border-color:var(--f13h-accent,#F59E0B);
+    box-shadow:0 0 0 1px var(--f13h-accent,#F59E0B),0 0 14px var(--f13h-glow,rgba(245,158,11,0.28));}
+  .f13h-card-h{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;flex-wrap:wrap;}
+  .f13h-name{font-size:12px;font-weight:700;color:var(--f13h-bright,#FEF3C7);letter-spacing:0.02em;}
+  .f13h-range{
+    font-size:9px;color:var(--f13h-dim,#8B7A5C);border:0.5px solid var(--f13h-border-hi,#5C4624);
+    border-radius:10px;padding:1px 7px;white-space:nowrap;font-family:'JetBrains Mono',ui-monospace,monospace;
+  }
+  .f13h-line{display:flex;gap:8px;font-size:11px;line-height:1.5;margin-top:5px;color:var(--f13h-text,#D4C5A8);}
+  .f13h-tag{flex-shrink:0;font-size:8px;letter-spacing:0.1em;text-transform:uppercase;
+    color:var(--f13h-dim,#8B7A5C);width:34px;padding-top:2px;font-weight:700;text-align:right;}
+  .f13h-line.means .f13h-tag{color:var(--f13h-accent-soft,#D97706);}
+  .f13h-body::-webkit-scrollbar{width:8px;}
+  .f13h-body::-webkit-scrollbar-track{background:var(--f13h-panel,#15100A);}
+  .f13h-body::-webkit-scrollbar-thumb{background:var(--f13h-border,#3A2D1A);border-radius:4px;}
+  .f13h-body::-webkit-scrollbar-thumb:hover{background:var(--f13h-border-hi,#5C4624);}
+</style>
+
+<script id="f13h-script">
+(function(){
+  "use strict";
+
+  /* ============ PER-TOOL CONFIG (changes per tool) ===================== */
+  var TUTORIAL_URL = 'https://tutorial.f13ld.app/foam';
+  var TOOL_TITLE   = 'foam';
+  var ROW_SEL      = '.sc-group';   /* the per-control row container for this tool */
+  var INTRO = 'F13LD.foam grows a cellular scaffold from a cloud of seed points — each seed owns the space nearest to it, and the foam lives on the boundaries between those cells. Place the seeds, pick how the boundaries become solid, then tune thickness. Tap any i beside a control to jump here.';
+
+  var SECTIONS = [
+    { title:'Topology', items:[
+      { id:'topology', label:'topology · open / closed / plateau', anchor:{row:'#mOpen'},
+        what:'Which part of the cell boundaries becomes solid: the edges where three or more cells meet, the faces between two cells, or edges with soap-film style rounded junctions.',
+        see:'Open = a strut network (reticulated foam); Closed = thin walls sealing each cell; Plateau = struts that swell where they join, like dried soap foam.',
+        why:'Open and plateau give the interconnected porosity bone ingrowth needs; closed gives sealed cells and higher stiffness per mass.' }
+    ]},
+    { title:'Geometry', items:[
+      { id:'cells', label:'cells', range:'50 – 800', anchor:{row:'#sCount'},
+        what:'How many seeds (and so cells) fill the cube. Lattice modes round to the nearest whole lattice, and the actual count shows beside the target when they differ.',
+        see:'More cells = smaller pores packed tighter; fewer = larger, open cells.',
+        why:'Sets pore size for a given cube; the mm read-out shows the cube edge at your cell size.' },
+      { id:'cellsize', label:'cell size', range:'mm · display only', anchor:{row:'#cellSizeMM'},
+        what:'Real-world average cell diameter.',
+        see:'No change to the shape — rescales the mm read-outs beside the sliders.',
+        why:'Anchors the dimensionless model to physical units; does not touch the exported JSON.' },
+      { id:'thickness', label:'thickness', range:'0.02 – 0.50', anchor:{row:'#sThick'},
+        what:'Half-thickness of walls (closed) or strut radius (open / plateau). The mm read-out shows the full wall or the strut diameter. Normalize divides by the field gradient so thickness is a true perpendicular distance.',
+        see:'Walls and struts fatten or thin; with normalize on they stay uniform, with it off they vary with the local field slope.',
+        why:'Your relative-density dial. Keep the full wall above your printer’s minimum feature size.' },
+      { id:'plateauk', label:'plateau k', range:'0.01 – 0.20 · plateau', anchor:{row:'#sPlateauK'},
+        what:'Extra material added where struts meet, fading out along each strut.',
+        see:'Junctions round off and swell as k rises.',
+        why:'Fillets the nodes — lowers stress concentration at strut joints.' },
+      { id:'organic', label:'organic', range:'0 – 10', anchor:{row:'#sOrganic'},
+        what:'Inflates the vertices where four or more cells meet, without thickening the struts between them.',
+        see:'Nodes grow from sharp joints into rounded, bulbous knots — a trabecular, sea-urchin look.',
+        why:'Biomimetic node shaping; mass moves to the junctions where load paths cross.' }
+    ]},
+    { title:'Seed distribution', items:[
+      { id:'seeds', label:'seed mode', anchor:{into:'#seedLabel'},
+        what:'How seed points are placed. Poisson-disk keeps a minimum gap between seeds; Lloyd-relaxed then evens out cell volumes; uniform random has no gap; Weaire–Phelan and Kelvin are the classic equal-volume foam lattices.',
+        see:'Stochastic modes give irregular, bone-like cells; lattices give repeating, identical cells.',
+        why:'Controls cell-size scatter — the main lever between trabecular-like irregularity and engineered regularity.' },
+      { id:'periodic', label:'periodic',
+        what:'Makes opposite faces of the cube share one seed pattern.',
+        see:'Turn on tile 3× in the viewport: with periodic on, the seams disappear. Lattice modes switch it on automatically.',
+        why:'Needed whenever the cube will be repeated to fill a larger part.' },
+      { id:'regularity', label:'regularity', range:'0.45 – 1.0 · Poisson / Lloyd', anchor:{row:'#sSpacing'},
+        what:'Minimum seed gap as a fraction of the tightest gap that still fits the requested cell count. The mm read-out shows that gap.',
+        see:'Near 1 = very even, honeycomb-like cells; lower = more scatter in cell size.',
+        why:'Tunes how uniform the pores are without changing how many there are.' },
+      { id:'lloyd', label:'Lloyd iter', range:'0 – 12', anchor:{row:'#sLloyd'},
+        what:'Rounds of moving each seed to the centre of its own cell.',
+        see:'Cells become rounder and closer in volume with each round.',
+        why:'Approaches the equal-volume cells of real foams while staying irregular.' },
+      { id:'rng', label:'RNG seed', anchor:{row:'#rngSeed'},
+        what:'Number that fixes the random layout. Same number + same settings = same foam.',
+        see:'Reseed draws a new layout with the same statistics.',
+        why:'Reproducibility — record it with a design you keep.' }
+    ]},
+    { title:'Anisotropy', items:[
+      { id:'aniso', label:'anisotropy · X / Y / Z stretch', anchor:{into:'#anisoLabel'},
+        what:'Stretches the distance measure along each axis, so cells elongate along axes set above 1.',
+        see:'Cells become oblong along the stretched axis; seeds stay where they are.',
+        why:'Mimics trabecular bone aligned with its principal load — directional stiffness from the same seeds.' }
+    ]},
+    { title:'Viewport', items:[
+      { id:'overlay', label:'seeds · tile',
+        what:'Seeds shows the seed points as dots; tile repeats the cube 3×3×3.',
+        see:'Dots sit at the centre of each cell; tiling exposes any seam between copies.',
+        why:'Checks seed placement and periodicity at a glance.' },
+      { id:'clip', label:'clip · X / Y / Z',
+        what:'Cuts the view with a plane across the chosen axis; drag the round handle to slide the cut.',
+        see:'Exposes the interior foam; the cut face is tinted in the axis colour.',
+        why:'Inspect internal connectivity and wall thickness without exporting.' },
+      { id:'quality', label:'quality · Low / Med / High',
+        what:'Bake resolution and raymarch sampling of the live preview.',
+        see:'Higher = cleaner thin walls and smoother edges, slower updates.',
+        why:'Preview fidelity only — the exported recipe is the same at any setting.' }
+    ]},
+    { title:'Handoff', items:[
+      { id:'export', label:'Export JSON / Open in F13LD.mesh / Add to queue',
+        what:'Saves the current recipe as JSON, hands it to F13LD.mesh, or adds it to your F13LD.queue.',
+        see:'The recipe records every seed position plus the generator settings, topology and thickness. F13LD.mesh needs a periodic foam; the handoff explains and offers to turn periodic on if it isn\u2019t.',
+        why:'The bridge from foam design to meshing and printing.' }
+    ]}
+  ];
+  /* ============ END PER-TOOL CONFIG ==================================== */
+
+  function el(tag, cls, html){ var n=document.createElement(tag); if(cls) n.className=cls; if(html!=null) n.innerHTML=html; return n; }
+
+  var scrim, drawer, trigger;
+
+  function line(tag, txt, kind){
+    var l = el('div','f13h-line'+(kind?(' '+kind):''));
+    l.appendChild(el('span','f13h-tag',tag));
+    l.appendChild(el('span',null,txt));
+    return l;
+  }
+
+  function build(){
+    scrim = el('div','f13h-scrim');
+    drawer = el('div','f13h-drawer');
+
+    var head = el('div','f13h-head');
+    head.appendChild(el('h2', null, 'F13LD.<b>'+TOOL_TITLE+'</b><span>field guide</span>'));
+    var tut = document.createElement('a');
+    tut.className='f13h-tut'; tut.href=TUTORIAL_URL; tut.target='_blank'; tut.rel='noopener';
+    tut.textContent='Tutorial \u2197';
+    head.appendChild(tut);
+    var close = el('button','f13h-close','\u00d7'); close.setAttribute('aria-label','Close');
+    close.addEventListener('click', closeDrawer);
+    head.appendChild(close);
+    drawer.appendChild(head);
+
+    var body = el('div','f13h-body');
+    body.appendChild(el('div','f13h-intro', INTRO));
+    SECTIONS.forEach(function(sec){
+      body.appendChild(el('div','f13h-section-t', sec.title));
+      sec.items.forEach(function(it){
+        var card = el('div','f13h-card'); card.id='f13h-card-'+it.id;
+        var h = el('div','f13h-card-h');
+        h.appendChild(el('span','f13h-name', it.label));
+        if(it.range) h.appendChild(el('span','f13h-range', it.range));
+        card.appendChild(h);
+        if(it.what) card.appendChild(line('sets',  it.what));
+        if(it.see)  card.appendChild(line('shows', it.see));
+        if(it.why)  card.appendChild(line('means', it.why, 'means'));
+        body.appendChild(card);
+      });
+    });
+    drawer.appendChild(body);
+
+    document.body.appendChild(scrim);
+    document.body.appendChild(drawer);
+    scrim.addEventListener('click', closeDrawer);
+  }
+
+  /* keep the drawer tucked under the header's right edge (handles centered layouts) */
+  function alignDrawer(){
+    if(!drawer) return;
+    var h = document.querySelector('.f13ld-header');
+    if(!h) return;
+    var r = h.getBoundingClientRect();
+    drawer.style.right = Math.max(0, Math.round(window.innerWidth - r.right)) + 'px';
+    drawer.style.top = Math.max(0, Math.round(r.bottom)) + 'px';
+    drawer.style.maxHeight = 'calc(100vh - ' + (Math.max(0, Math.round(r.bottom)) + 16) + 'px)';
+  }
+
+  function openDrawer(id){
+    alignDrawer();
+    scrim.classList.add('open');
+    drawer.classList.add('open');
+    if(trigger) trigger.classList.add('active');
+    if(id){
+      setTimeout(function(){
+        var c = document.getElementById('f13h-card-'+id);
+        if(!c) return;
+        c.scrollIntoView({block:'center', behavior:'smooth'});
+        c.classList.add('flash');
+        setTimeout(function(){ c.classList.remove('flash'); }, 1500);
+      }, 90);
+    }
+  }
+  function closeDrawer(){
+    scrim.classList.remove('open');
+    drawer.classList.remove('open');
+    if(trigger) trigger.classList.remove('active');
+  }
+
+  function makeI(id){
+    var b = el('button','f13h-i','i'); b.type='button';
+    b.setAttribute('aria-label','About this control');
+    b.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); openDrawer(id); });
+    return b;
+  }
+
+  /* resolve the <label> for a control row, tolerant of different markups */
+  function rowLabel(sel){
+    var elx = document.querySelector(sel); if(!elx) return null;
+    var c = elx.closest(ROW_SEL);
+    if(c){ var l = c.querySelector('label'); if(l) return l; }
+    var lw = elx.closest('label'); if(lw) return lw;   /* label-wrapped input */
+    return null;
+  }
+
+  /* place an inline "i" using one of: row | into | after | titleBefore */
+  function place(item){
+    var a = item.anchor; if(!a) return;
+    if(a.into){ var t = document.querySelector(a.into); if(t) t.appendChild(makeI(item.id)); return; }
+    if(a.titleBefore){ var e = document.querySelector(a.titleBefore);
+      if(e && e.previousElementSibling) e.previousElementSibling.appendChild(makeI(item.id)); return; }
+    if(a.after){ var x = document.querySelector(a.after);
+      if(x && x.parentNode) x.parentNode.insertBefore(makeI(item.id), x.nextSibling); return; }
+    if(a.row){ var l = rowLabel(a.row); if(!l) return;
+      if(l.id){ l.parentNode.insertBefore(makeI(item.id), l.nextSibling); }  /* app may rewrite this label's innerHTML; sibling survives */
+      else { l.appendChild(makeI(item.id)); }
+      return; }
+  }
+
+  function init(){
+    build();
+    var fhRight = document.querySelector('.fh-right');
+    if(fhRight){
+      trigger = el('button','f13h-trigger','?');
+      trigger.type='button';
+      trigger.title='Help \u00b7 control guide';
+      trigger.setAttribute('aria-label','Help');
+      trigger.addEventListener('click', function(){
+        if(drawer.classList.contains('open')) closeDrawer(); else openDrawer(null);
+      });
+      fhRight.insertBefore(trigger, fhRight.firstChild);
+    }
+    SECTIONS.forEach(function(sec){ sec.items.forEach(place); });
+    alignDrawer();
+    window.addEventListener('resize', alignDrawer);
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeDrawer(); });
+  }
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+<!-- =====================  END F13LD HELP SYSTEM  ======================= -->
+  <!-- F13LD.queue integration -->
+  <script>
+  (function(){
+    // Snapshot hook — safe to define now; the queue client calls it later.
+    window.F13LD_snapshot=function(){
+      try{
+        var s=document.getElementById('c'), k=256/Math.max(s.width,s.height),
+            o=document.createElement('canvas');
+        o.width=Math.round(s.width*k); o.height=Math.round(s.height*k);
+        o.getContext('2d').drawImage(s,0,0,o.width,o.height);
+        return o.toDataURL('image/webp',0.72);
+      }catch(e){ return null; }
+    };
+    var RIGHT='.fh-right', ANCHOR='.fh-mesh-btn', LABEL='⊕ Add to queue';
+    function mountReal(){
+      var fb=document.getElementById('f13ldq-fallback'); if(fb) fb.remove();
+      F13LDQueue.mountButton({ mount:RIGHT, anchor:ANCHOR, position:'before',
+        className:'fh-mesh-btn', text:LABEL,
+        getRecipe:function(){ return meshReadyRecipe(); }, tool:'f13ld.foam' });
+    }
+    function mountFallback(){
+      if(document.getElementById('f13ldq-fallback')) return;
+      var r=document.querySelector(RIGHT), a=document.querySelector(ANCHOR); if(!r) return;
+      var b=document.createElement('button'); b.type='button'; b.id='f13ldq-fallback';
+      b.className='fh-mesh-btn'; b.textContent=LABEL;
+      b.addEventListener('click', function(){ alert('Add to queue is offline — couldn\u2019t reach the queue service. Reload the page to try again.'); });
+      if(a) r.insertBefore(b,a); else r.appendChild(b);
+    }
+    function load(retry){
+      var sc=document.createElement('script');
+      sc.src='https://mshomper.github.io/f13ld.queue/f13ld-queue.js';
+      sc.onload=function(){ if(window.F13LDQueue) mountReal(); else mountFallback(); };
+      sc.onerror=function(){ if(retry) setTimeout(function(){ load(false); }, 1500); else mountFallback(); };
+      document.head.appendChild(sc);
+    }
+    load(true);
+  })();
+  </script>
+</body>
+</html>
