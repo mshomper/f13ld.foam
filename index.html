@@ -191,7 +191,8 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
     </div>
     <div class="fh-right">
       <button class="fh-mesh-btn" onclick="openInMesh()">⬡ Open in F13LD.mesh</button>
-      <span class="fh-version">v0.3.0</span>
+      <button class="fh-mesh-btn" onclick="openInLab()" title="Homogenize this foam in F13LD.lab — stiffness from the validated FFT solver">⚗ Open in F13LD.lab</button>
+      <span class="fh-version">v0.4.0</span>
       <div class="fh-icon">
         <svg width="18" height="18" viewBox="0 0 40 40" fill="none" stroke="#5C4624" stroke-width="1.9" stroke-linejoin="round">
           <path d="M5 8 L17 4 L24 12 L18 21 L7 19 Z"/>
@@ -696,6 +697,107 @@ const FoamSeeds = (function(){
   return {VERSION, MODES, LATTICE_MODES, meanSpacing, generate};
 })();
 // ==== END FoamSeeds ===========================================================
+
+// ==== BEGIN foam field (verbatim copy of F13LD.mesh worker/m25-sdf-foam.js) ===
+// foamSeedsFromRecipe + buildFoamSDF — the same exact-gradient field mesh
+// exports and F13LD.lab homogenizes (13d-foam-kernel.js); F13LD.lab's
+// validate-foam.js checks the three copies match. Used here for the
+// solid-fraction readout (v0.4.0) and, next, the stiffness estimate.
+function foamSeedsFromRecipe(json){
+  const sd=json.seeds||{};
+  if(Array.isArray(sd.positions) && sd.positions.length>=12){
+    const out=[];
+    for(let i=0;i+2<sd.positions.length;i+=3) out.push([sd.positions[i],sd.positions[i+1],sd.positions[i+2]]);
+    return out;
+  }
+  return FoamSeeds.generate({
+    mode: sd.mode, count: sd.count, regularity: sd.regularity!=null?sd.regularity:0.9,
+    lloydIter: sd.lloyd_iterations||0, rngSeed: sd.rng_seed||0, periodic: true
+  }).seeds;
+}
+
+function buildFoamSDF(json){
+  const seeds=foamSeedsFromRecipe(json);
+  const N=seeds.length;
+  const g=json.geometry||{};
+  const an=json.anisotropy||{};
+  const st=(an.enabled&&Array.isArray(an.stretch)&&an.stretch.length===3)?an.stretch.map(v=>(isFinite(v)&&v>0)?v:1):[1,1,1];
+  const ix=1/st[0], iy=1/st[1], iz=1/st[2];
+  const ix2=ix*ix, iy2=iy*iy, iz2=iz*iz;
+  const mode=g.mode==='open'||g.mode==='closed'?g.mode:'plateau';
+  const T=(typeof g.thickness==='number'&&g.thickness>0)?g.thickness:0.08;
+  const K=(mode==='plateau'&&typeof g.plateau_k==='number')?g.plateau_k:0;
+  const O=(typeof g.organic==='number'&&g.organic>0)?g.organic:0;
+  const oAmp=O*2.0, oReach=0.10+Math.pow(O,0.6)*0.25;
+  const normalize=g.normalize!==false;
+  const L=10, H=5;
+
+  // Seed grid: cell edge ≈ mean spacing × stretch per axis (same layout as
+  // the preview bake), seeds sorted by cell into flat arrays.
+  const s0=FoamSeeds.meanSpacing(N);
+  const G=[0,1,2].map(a=>Math.max(1,Math.min(40,Math.round(L/(s0*st[a])))));
+  const cs=G.map(n=>L/n);
+  const nC=G[0]*G[1]*G[2];
+  const cIdx=(v,a)=>Math.min(G[a]-1,Math.max(0,Math.floor((v+H)/cs[a])));
+  const cellOf=new Int32Array(N), start=new Int32Array(nC+1);
+  for(let i=0;i<N;i++){const c=cIdx(seeds[i][0],0)+G[0]*(cIdx(seeds[i][1],1)+G[1]*cIdx(seeds[i][2],2));cellOf[i]=c;start[c+1]++;}
+  for(let c=0;c<nC;c++) start[c+1]+=start[c];
+  const fill=start.slice(0,nC), SX=new Float64Array(N), SY=new Float64Array(N), SZ=new Float64Array(N);
+  for(let i=0;i<N;i++){const k=fill[cellOf[i]]++;SX[k]=seeds[i][0];SY[k]=seeds[i][1];SZ[k]=seeds[i][2];}
+  // Ring R is exact once the 4th-nearest metric distance ≤ R·min(cs/stretch);
+  // a periodic ring must not wrap onto itself (2R+1 ≤ G on every axis).
+  const rm=Math.min(cs[0]*ix,cs[1]*iy,cs[2]*iz);
+  const maxRing=Math.min(2,Math.floor((Math.min(G[0],G[1],G[2])-1)/2));
+
+  // Top-4 nearest: squared metric distance + real displacement of each.
+  const D=new Float64Array(4), RX=new Float64Array(4), RY=new Float64Array(4), RZ=new Float64Array(4);
+  function consider(k,px,py,pz){
+    let rx=px-SX[k], ry=py-SY[k], rz=pz-SZ[k];
+    rx-=L*Math.round(rx/L); ry-=L*Math.round(ry/L); rz-=L*Math.round(rz/L);
+    const d=rx*rx*ix2+ry*ry*iy2+rz*rz*iz2;
+    if(d>=D[3]) return;
+    let j=3;
+    while(j>0&&D[j-1]>d){D[j]=D[j-1];RX[j]=RX[j-1];RY[j]=RY[j-1];RZ[j]=RZ[j-1];j--;}
+    D[j]=d;RX[j]=rx;RY[j]=ry;RZ[j]=rz;
+  }
+  function nearest4(px,py,pz){
+    const c0=cIdx(px,0), c1=cIdx(py,1), c2=cIdx(pz,2);
+    for(let R=1;R<=maxRing;R++){
+      D.fill(Infinity);
+      for(let a=-R;a<=R;a++){const qx=(c0+a+2*G[0])%G[0];
+        for(let b=-R;b<=R;b++){const qy=(c1+b+2*G[1])%G[1];
+          for(let e=-R;e<=R;e++){const qz=(c2+e+2*G[2])%G[2];
+            const c=qx+G[0]*(qy+G[1]*qz);
+            for(let k=start[c];k<start[c+1];k++) consider(k,px,py,pz);
+          }}}
+      if(Math.sqrt(D[3])<=R*rm) return;
+    }
+    D.fill(Infinity);
+    for(let k=0;k<N;k++) consider(k,px,py,pz);
+  }
+  const smooth=(e0,e1,x)=>{const t=Math.min(1,Math.max(0,(x-e0)/(e1-e0)));return t*t*(3-2*t);};
+  const j2=mode==='closed'?1:2;   // index of d₂ (closed) or d₃ (open/plateau)
+
+  return p=>{
+    // Wrap into the periodic tile [-5, 5).
+    const px=((p[0]+H)%L+L)%L-H, py=((p[1]+H)%L+L)%L-H, pz=((p[2]+H)%L+L)%L-H;
+    nearest4(px,py,pz);
+    const d1=Math.sqrt(D[0]), dj=Math.sqrt(D[j2]), d3=Math.sqrt(D[2]), d4=Math.sqrt(D[3]);
+    const base=(dj-d1)*0.5;
+    let E=0;
+    if(K>0) E+=K*(1-smooth(0,0.35,d3-d1));
+    if(oAmp>0) E+=oAmp*T*Math.pow(1-smooth(0,oReach,d4-d1),1.4);
+    if(!normalize) return base-T-E;
+    // ∇base = (∇dⱼ − ∇d₁)/2 with ∇dᵢ = (rᵢ ⊙ 1/stretch²)/dᵢ
+    const a1=d1>1e-9?1/d1:0, aj=dj>1e-9?1/dj:0;
+    const gx=(RX[j2]*ix2*aj-RX[0]*ix2*a1)*0.5;
+    const gy=(RY[j2]*iy2*aj-RY[0]*iy2*a1)*0.5;
+    const gz=(RZ[j2]*iz2*aj-RZ[0]*iz2*a1)*0.5;
+    const gm=Math.sqrt(gx*gx+gy*gy+gz*gz);
+    return base/Math.max(gm,0.05)-T-E;
+  };
+}
+// ==== END foam field ==========================================================
 
 function regenerateSeeds(){
   const r = FoamSeeds.generate({
@@ -1510,7 +1612,37 @@ function updateEq(){
     ? 'dᵢ = i-th nearest seed, measured as ‖(p − s) ÷ (' + [state.anisoX, state.anisoY, state.anisoZ].map(v => v.toFixed(2)).join(', ') + ')‖'
     : 'dᵢ = distance to the i-th nearest seed';
   const notes = [metric, state.actualCount + ' seeds', state.periodic ? 'periodic' : 'bounded'];
-  bar.innerHTML = e + ' &lt; 0<br><span class="eq-note">' + notes.join(' · ') + '</span>';
+  bar.innerHTML = e + ' &lt; 0<br><span class="eq-note">' + notes.join(' · ') +
+    ' · <span id="eqVf" style="opacity:' + (lastVf ? 0.45 : 1) + '" title="Solid volume fraction of the cube, sampled on a 48³ grid with the exact field F13LD.mesh exports and F13LD.lab homogenizes">' +
+    (lastVf ? lastVf : 'solid …') + '</span></span>';
+  scheduleSolidFraction();
+}
+
+// ── Solid fraction readout (v0.4.0) ─────────────────────────────────────────
+// Point-samples the shared foam field (buildFoamSDF above) at 48³ cell
+// centres: the fraction F13LD.lab's voxels see, to within sampling. The field
+// is periodic by construction, so a bounded foam reads slightly off at the
+// faces (shown with ≈).
+var vfTimer = null, lastVf = '';   // var: updateEq can run before this line during load
+var VF_RES = 48;
+function scheduleSolidFraction(){
+  if(vfTimer) clearTimeout(vfTimer);
+  vfTimer = setTimeout(updateSolidFraction, 150);
+}
+function updateSolidFraction(){
+  vfTimer = null;
+  if(state.seeds.length < 4) return;
+  let sdf;
+  try { sdf = buildFoamSDF(buildExportJSON()); } catch(err){ return; }
+  const n = VF_RES, step = DOMAIN_SIZE / n, p = [0, 0, 0];
+  let solid = 0;
+  for(let i = 0; i < n; i++){ p[0] = DOMAIN_MIN + (i + 0.5) * step;
+    for(let j = 0; j < n; j++){ p[1] = DOMAIN_MIN + (j + 0.5) * step;
+      for(let k = 0; k < n; k++){ p[2] = DOMAIN_MIN + (k + 0.5) * step; if(sdf(p) < 0) solid++; } } }
+  const pct = 100 * solid / (n * n * n);
+  lastVf = 'solid ' + (state.periodic ? '' : '≈ ') + (pct < 10 ? pct.toFixed(2) : pct.toFixed(1)) + ' %';
+  const el = $('eqVf');
+  if(el){ el.textContent = lastVf; el.style.opacity = 1; }
 }
 
 // Any change to the design resets the export button's confirmation state.
@@ -1662,7 +1794,7 @@ function buildExportJSON(){
     family: 'foam',
     meta: {
       tool: 'f13ld.foam',
-      version: '0.3.0',
+      version: '0.4.0',
       timestamp: new Date().toISOString(),
       preset: SEED_MODE_LABELS[state.seedMode] + ' · ' + state.topology
     },
@@ -1717,6 +1849,14 @@ function openInMesh(){
   const data = meshReadyRecipe();
   if(!data) return;
   window.open('https://mshomper.github.io/f13ld.mesh/#r=' + encodeURIComponent(JSON.stringify(data)), '_blank');
+}
+
+// F13LD.lab reads the same #r= link (v0.14.0) and, like mesh, takes only
+// periodic foam — a non-periodic cube isn't a valid unit cell to homogenize.
+function openInLab(){
+  const data = meshReadyRecipe();
+  if(!data) return;
+  window.open('https://mshomper.github.io/f13ld.lab/#r=' + encodeURIComponent(JSON.stringify(data)), '_blank');
 }
 
 $('exportBtn').addEventListener('click', function(){
