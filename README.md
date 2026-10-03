@@ -22,6 +22,8 @@ Live: https://mshomper.github.io/f13ld.foam
 - ν = 0.433 − 0.468 ρ (open), 0.294 (closed) · G = E / 2(1 + ν)
 - anisotropy stretch moves stiffness toward the stretched axis as s^2.49 (open) / s^1.63 (closed), keeping the mean
 
+**Calibration status (2026-10-03): provisional.** 27 of the 67 lab runs behind these laws stopped at the lab's old 300-iteration cap (open and plateau foams at 18–35 %, closed at 12–18 % on the coarse grid), and a stopped solve reads stiff, so the open law may read high above ~18 % solid. The re-run at the new 1000-iteration cap, a cell-count pass and a refit are next (F13LD.lab `docs/FOAM_CALIBRATION.md` §8, §10); the constants will move in v0.5.1.
+
 Each value comes with a likely range (fit scatter, seed-to-seed scatter at this cell count, and an open cell-count question still being measured). Ordered lattices (Kelvin, Weaire–Phelan), uniform-random seeds, organic growth, normalize off and densities outside 5–35 % (open) / 12–35 % (closed) get an estimate marked **not calibrated**. The result rides in the exported recipe as a `homogenization` block (F13LD.tpms field names), so F13LD.mesh shows it. For a measured answer, use **Open in F13LD.lab**.
 
 ## Handoff
