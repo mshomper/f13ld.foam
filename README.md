@@ -13,6 +13,17 @@ Live: https://mshomper.github.io/f13ld.foam
 - **Preview**: GPU bake of the four nearest-seed distances per voxel (grid-accelerated, exact), raymarched with guaranteed-safe step lengths; clip plane, 3×3×3 tile check, mm read-outs.
 - **Solid fraction** (v0.4.0): live read-out under the equation, sampled at 48³ from the exact field F13LD.mesh exports and F13LD.lab homogenizes (shown with ≈ for bounded foams, whose faces don't wrap).
 
+## Stiffness estimate (v0.5.0)
+
+**Estimate stiffness** measures the solid fraction of the exact foam (the field F13LD.mesh exports, point-sampled at 64³ in worker threads) and estimates Ex, Ey, Ez, the three shear moduli and Poisson's ratio from laws fitted to 67 F13LD.lab FFT homogenizations of this same geometry (F13LD.lab `docs/FOAM_CALIBRATION.md`):
+
+- open and plateau: E/E_s = 0.724 ρ^1.93 · closed: E/E_s = 0.304 ρ + 0.456 ρ²
+- × 0.956 / 0.985 for Poisson-disk seeds (open / closed) · × 1 + 0.118 (1 − e^(−k/0.111)) for plateau borders that add mass
+- ν = 0.433 − 0.468 ρ (open), 0.294 (closed) · G = E / 2(1 + ν)
+- anisotropy stretch moves stiffness toward the stretched axis as s^2.49 (open) / s^1.63 (closed), keeping the mean
+
+Each value comes with a likely range (fit scatter, seed-to-seed scatter at this cell count, and an open cell-count question still being measured). Ordered lattices (Kelvin, Weaire–Phelan), uniform-random seeds, organic growth, normalize off and densities outside 5–35 % (open) / 12–35 % (closed) get an estimate marked **not calibrated**. The result rides in the exported recipe as a `homogenization` block (F13LD.tpms field names), so F13LD.mesh shows it. For a measured answer, use **Open in F13LD.lab**.
+
 ## Handoff
 
 - **Open in F13LD.mesh** and **Open in F13LD.lab** (v0.4.0, stiffness by FFT homogenization) send the recipe after `#r=` in the link. Recipes carry every seed position (up to ~28 KB), and the part after `#` never leaves the browser, so length doesn't matter.
@@ -23,7 +34,7 @@ Live: https://mshomper.github.io/f13ld.foam
 
 ```
 { "family": "foam",
-  "meta":     { "tool": "f13ld.foam", "version": "0.4.0", … },
+  "meta":     { "tool": "f13ld.foam", "version": "0.5.0", … },
   "domain":   { "world": [-5, 5], "periodic": true, … },
   "seeds":    { "mode", "count", "regularity", "lloyd_iterations", "rng_seed",
                 "generator": "FoamSeeds/1", "positions": [x, y, z, …] },

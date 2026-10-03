@@ -155,7 +155,36 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
 #meshWarn span{flex:1 1 260px}
 #meshWarn .mw-close{background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;line-height:1}
 
+/* ── Stiffness estimate (v0.5.0) ── */
+.homo-controls{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:8px 0}
+.homo-controls label{font-size:12px;color:var(--dim);display:flex;align-items:center;gap:5px}
+#runBtn{font-family:inherit;font-size:12px;font-weight:600;padding:4px 14px;border:0.5px solid var(--accent-deep);border-radius:20px;background:var(--accent-soft);color:var(--accent);cursor:pointer;transition:all 0.15s}
+#runBtn:hover{background:var(--accent-dark)}
+#runBtn:disabled{opacity:0.5;cursor:default}
+#homo-status{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--dimmer)}
+#homo-results{display:none}
+#homo-results.stale{opacity:0.35;pointer-events:none}
+.homo-method{font-size:11.5px;line-height:1.55;margin:2px 0 8px;padding:7px 10px;border-radius:6px;border:0.5px solid var(--border);background:var(--card);color:#b9b3a4}
+.homo-method b{font-weight:600}
+.homo-method.cal{border-color:var(--accent-deep);background:#110e07}.homo-method.cal b{color:var(--accent)}
+.homo-method.uncal b,.homo-method .warn{color:var(--warn)}
+.homo-method .note{color:#8a7d62}
+#viz-row{display:grid;grid-template-columns:minmax(170px,240px) 1fr;gap:8px;align-items:start;margin-bottom:8px}
+.viz-card{background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:8px}
+.viz-title{font-size:10px;color:var(--dimmer);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.08em}
+#ellcv{width:100%;aspect-ratio:1;display:block;border-radius:6px}
+#metric-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;align-content:start}
+.metric{background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:7px 8px;text-align:center}
+.metric .mv{font-family:'IBM Plex Mono',monospace;font-size:18px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums}
+.metric .ml{font-size:11px;color:var(--dimmer);margin-top:2px}
+.metric .mu{font-size:10px;color:var(--dim)}
+#bell-title{font-size:10px;color:var(--dimmer);text-transform:uppercase;letter-spacing:0.08em;margin:4px 0}
+#bell-sub{font-size:10.5px;color:var(--dimmest);margin-bottom:6px;line-height:1.5}
+#homog-mm-row{display:none;margin-top:6px;padding:6px 10px;background:#0c0a06;border:0.5px solid var(--accent-dark);border-radius:6px;font-size:11px;color:#8a7d62;flex-wrap:wrap;gap:12px;justify-content:space-between}
+#homog-mm-row b{color:var(--accent-mid);font-weight:500}
+.method-note{font-size:10.5px;color:var(--dimmest);margin-top:8px;line-height:1.55;border-top:0.5px solid var(--border);padding-top:7px}
 @media (max-width:560px){
+  #viz-row{grid-template-columns:1fr}
   .f13ld-header{flex-wrap:wrap;height:auto;padding:8px 12px 10px;row-gap:8px;column-gap:10px}
   .fh-right{display:contents}
   .fh-left{order:0;margin-right:auto}
@@ -192,7 +221,7 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
     <div class="fh-right">
       <button class="fh-mesh-btn" onclick="openInMesh()">⬡ Open in F13LD.mesh</button>
       <button class="fh-mesh-btn" onclick="openInLab()" title="Homogenize this foam in F13LD.lab — stiffness from the validated FFT solver">⚗ Open in F13LD.lab</button>
-      <span class="fh-version">v0.4.0</span>
+      <span class="fh-version">v0.5.0</span>
       <div class="fh-icon">
         <svg width="18" height="18" viewBox="0 0 40 40" fill="none" stroke="#5C4624" stroke-width="1.9" stroke-linejoin="round">
           <path d="M5 8 L17 4 L24 12 L18 21 L7 19 Z"/>
@@ -325,6 +354,46 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
       <div class="aniso-axis z"><span class="axis-lbl">Z</span><input type="range" id="sAnisoZ" min="0.3" max="3.0" step="0.05" value="1.0"><span class="sv" id="vsAnisoZ">1.00</span></div>
     </div>
 
+    <hr class="divider">
+
+    <!-- STIFFNESS ESTIMATE (v0.5.0) -->
+    <div class="section-label" id="estLabel">⬢ stiffness estimate</div>
+    <div class="homo-controls">
+      <label>E<sub>s</sub> (GPa) <input type="number" id="Es" class="num-inp" value="110" min="1" max="1000" step="1" title="Solid modulus of the printed material; Ti-6Al-4V ≈ 110 GPa"></label>
+      <label>ν<sub>s</sub> <input type="number" id="nuS" class="num-inp" value="0.3" min="0" max="0.49" step="0.01" title="Poisson's ratio of the solid (the calibration used 0.3)"></label>
+      <button id="runBtn" title="Measure the solid fraction and estimate the effective stiffness from laws fitted to F13LD.lab">Estimate stiffness</button>
+      <span id="homo-status"></span>
+    </div>
+    <div id="homo-results">
+      <div id="homo-method" class="homo-method"></div>
+      <div id="viz-row">
+        <div class="viz-card">
+          <div class="viz-title">directional stiffness</div>
+          <canvas id="ellcv"></canvas>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <div id="metric-grid">
+            <div class="metric"><div class="mv" id="rv">—</div><div class="ml">solid fraction</div></div>
+            <div class="metric"><div class="mv" id="rex" style="color:var(--xc)">—</div><div class="ml">E<sub>x</sub><span class="mu stiff-unit"> GPa</span></div></div>
+            <div class="metric"><div class="mv" id="rey" style="color:var(--yc)">—</div><div class="ml">E<sub>y</sub><span class="mu stiff-unit"> GPa</span></div></div>
+            <div class="metric"><div class="mv" id="rez" style="color:var(--zc)">—</div><div class="ml">E<sub>z</sub><span class="mu stiff-unit"> GPa</span></div></div>
+            <div class="metric"><div class="mv" id="rgyz" style="color:#a78bfa">—</div><div class="ml">G<sub>yz</sub><span class="mu stiff-unit"> GPa</span></div></div>
+            <div class="metric"><div class="mv" id="rgxz" style="color:#a78bfa">—</div><div class="ml">G<sub>xz</sub><span class="mu stiff-unit"> GPa</span></div></div>
+            <div class="metric"><div class="mv" id="rgxy" style="color:#a78bfa">—</div><div class="ml">G<sub>xy</sub><span class="mu stiff-unit"> GPa</span></div></div>
+            <div class="metric"><div class="mv" id="rnu">—</div><div class="ml">Poisson's ratio</div></div>
+            <div class="metric"><div class="mv" id="rratio">—</div><div class="ml">E max ÷ E min</div></div>
+          </div>
+          <div id="bell-wrap">
+            <div id="bell-title">Likely range of true stiffness</div>
+            <div id="bell-sub"></div>
+            <div id="bell-rows"></div>
+          </div>
+        </div>
+      </div>
+      <div id="homog-mm-row"><span>tile = <b id="mm-tile">—</b></span><span>solid volume per tile = <b id="mm-solid">—</b></span></div>
+      <div class="method-note" id="method-note"></div>
+    </div>
+
     <button id="exportBtn">Export JSON</button>
     <div id="footer">Drag to rotate · Scroll or pinch to zoom · X/Y/Z cut the view, drag the handle to move the cut · Seeds and tile toggles at top left</div>
   </div>
@@ -332,7 +401,7 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
 
 <script>
 // ============================================================================
-// F13LD.foam v0.3.0 — discrete cellular scaffolds
+// F13LD.foam v0.5.0 — discrete cellular scaffolds
 // Seeds (CPU) → GPU bake of the 4 nearest-seed distances per voxel into a 3D
 // texture → live raymarch of the foam field sampled from that texture, using
 // guaranteed-safe step lengths so rays always reach the far side of the cube.
@@ -1649,6 +1718,7 @@ function updateSolidFraction(){
 function onDesignChange(){
   const b = $('exportBtn');
   b.textContent = 'Export JSON'; b.style.borderColor = ''; b.style.color = '';
+  if(typeof estStale === 'function') estStale();   // v0.5.0 — an estimate belongs to one design
 }
 
 // ============================================================================
@@ -1794,7 +1864,7 @@ function buildExportJSON(){
     family: 'foam',
     meta: {
       tool: 'f13ld.foam',
-      version: '0.4.0',
+      version: '0.5.0',
       timestamp: new Date().toISOString(),
       preset: SEED_MODE_LABELS[state.seedMode] + ' · ' + state.topology
     },
@@ -1827,7 +1897,9 @@ function buildExportJSON(){
       // Edge of the repeating cube in mm at the cell size set here; F13LD.mesh
       // uses it as its default cell size. null when no cell size is set.
       tile_mm: f ? parseFloat((DOMAIN_SIZE * f).toFixed(4)) : null
-    }
+    },
+    // v0.5.0 — calibrated stiffness estimate (F13LD.tpms field names; null until run)
+    homogenization: (typeof estimateBlock === 'function') ? estimateBlock() : null
   };
 }
 
@@ -1912,7 +1984,362 @@ function frame(ts){
   drawSeedDots(ctx, w, h);
   drawAxisGizmo(ctx, w, h);
   drawClipHandle(ctx, w, h);
+  drawStiffnessSurface();
   requestAnimationFrame(frame);
+}
+
+// ============================================================================
+// STIFFNESS ESTIMATE (v0.5.0) — calibrated against F13LD.lab
+// ----------------------------------------------------------------------------
+// Laws fitted to F13LD.lab's FFT homogenization of foams built with this exact
+// field (lab 13d-foam-kernel.js = F13LD.mesh m25-sdf-foam.js = the copy above):
+// 67 runs, 2026-10-03, 64³ ↔ 128³ extrapolated (F13LD.lab
+// docs/FOAM_CALIBRATION.md §6–7, fit page docs/foam-calibration/foam-fit.html).
+// To refit: run the study again, open the fit page, copy its JSON into FOAM_CAL.
+//
+//   mean E / E_s   open, plateau:  C ρ^n           closed:  a ρ + b ρ²
+//   × Poisson-seed factor          × plateau factor 1 + A (1 − e^(−k/k0))
+//   ν              open: c0 + c1 ρ   closed: constant
+//   G              E / 2(1 + ν)      (checked to ±1–2 % on every lab run)
+//   stretch        E_i ∝ s_i^m (mean kept),  G_ij ∝ (E_i E_j)^(r/2) (mean kept)
+// ρ is measured here: the exact field point-sampled at 64³ in worker threads.
+// ============================================================================
+const FOAM_CAL = {
+  version: 1, runs: 67, date: '2026-10-03',
+  open:   { C: 0.72377, n: 1.92988, rms: 0.0328, nu0: 0.43300, nu1: -0.46776, rho: [0.05, 0.35],
+            cells: 27, real: 0.0316, axis: 0.0673, poisson: 0.9564, m: 2.485, r: 0.574 },
+  closed: { a: 0.30387, b: 0.45638, rms: 0.0087, nu: 0.2940, rho: [0.12, 0.35],
+            cells: 16, real: 0.0081, axis: 0.0211, poisson: 0.9854, m: 1.630, r: 0.835 },
+  plateau: { A: 0.1183, k0: 0.1114, rms: 0.0112, fullAt: 0.05 },   // factor applies fully once the swell adds ≥ 5 % of the solid
+  cellCountSD: 0.07,                                                 // open 12 %: 0.96 / 1.00 / 1.07 at 16 / 27 / 50 cells — wider until the cell-count pass is fitted
+  stretchMax: 2,                                                     // calibrated to a 2:1 stretch
+  nuS: 0.3                                                           // every lab run used ν_s = 0.3
+};
+
+// ── Solid fraction: the exact field sampled at N³ in a worker pool ───────────
+// The workers run the same FoamSeeds + buildFoamSDF source as this page (cut
+// from this script between the BEGIN FoamSeeds / END foam field markers).
+let _estPool = null;
+function estWorkerSource(){
+  const src = Array.prototype.map.call(document.querySelectorAll('script:not([src])'), s => s.textContent).join('\n');
+  const a = src.indexOf('// ==== BEGIN FoamSeeds'), b = src.indexOf('// ==== END foam field');
+  if(a < 0 || b < 0) throw new Error('foam field source not found');
+  return src.slice(a, b) + `
+self.onmessage = function(e){
+  const m = e.data, out = { id: m.id, counts: [] };
+  try {
+    for(const json of m.jsons){
+      const sdf = buildFoamSDF(json), N = m.N, st = 10 / N, p = [0, 0, 0];
+      let c = 0;
+      for(let i = m.i0; i < m.i1; i++){ p[0] = -5 + (i + 0.5) * st;
+        for(let j = 0; j < N; j++){ p[1] = -5 + (j + 0.5) * st;
+          for(let k = 0; k < N; k++){ p[2] = -5 + (k + 0.5) * st; if(sdf(p) < 0) c++; } } }
+      out.counts.push(c);
+    }
+  } catch(err){ out.error = String(err && err.message || err); }
+  self.postMessage(out);
+};`;
+}
+function estPool(){
+  if(_estPool) return _estPool;
+  const n = Math.max(1, Math.min(16, (navigator.hardwareConcurrency || 4)));
+  const url = URL.createObjectURL(new Blob([estWorkerSource()], { type: 'application/javascript' }));
+  _estPool = { workers: [], next: 1, jobs: {} };
+  for(let w = 0; w < n; w++){
+    const wk = new Worker(url);
+    wk.onmessage = e => { const j = _estPool.jobs[e.data.id]; if(j){ delete _estPool.jobs[e.data.id]; e.data.error ? j.reject(new Error(e.data.error)) : j.resolve(e.data.counts); } };
+    wk.onerror = e => { for(const id in _estPool.jobs){ _estPool.jobs[id].reject(new Error(e.message || 'worker failed')); delete _estPool.jobs[id]; } };
+    _estPool.workers.push(wk);
+  }
+  return _estPool;
+}
+// Fractions of the N³ cube that are solid, one per recipe json.
+async function sampleSolidFractions(jsons, N){
+  const P = estPool(), W = P.workers.length, per = Math.ceil(N / W), parts = [];
+  for(let w = 0; w < W; w++){
+    const i0 = w * per, i1 = Math.min(N, i0 + per);
+    if(i0 >= i1) continue;
+    const id = P.next++;
+    parts.push(new Promise((resolve, reject) => { P.jobs[id] = { resolve, reject }; P.workers[w].postMessage({ id, jsons, N, i0, i1 }); }));
+  }
+  const res = await Promise.all(parts), tot = jsons.map(() => 0);
+  res.forEach(c => c.forEach((v, i) => { tot[i] += v; }));
+  return tot.map(v => v / (N * N * N));
+}
+
+// ── The estimate (pure function of the design + measured ρ) ──────────────────
+// in: { topo, rho, rhoNoSwell, seedMode, regularity, plateauK, organic, normalize,
+//       stretch:[x,y,z], cells, periodic, Es (GPa), nuS }
+function foamEstimate(inp){
+  const C = FOAM_CAL, closed = inp.topo === 'closed', L = closed ? C.closed : C.open, rho = inp.rho;
+  const notes = [], uncal = [];
+  let rel = 1;                                   // product of factors on the law
+  const sd = { fit: L.rms, real: L.real * Math.sqrt(L.cells / Math.max(inp.cells, 1)), cell: C.cellCountSD, extra: 0 };
+  let Ebar = closed ? L.a * rho + L.b * rho * rho : L.C * Math.pow(rho, L.n);
+  if(rho < L.rho[0] || rho > L.rho[1]){
+    uncal.push('solid fraction ' + (rho * 100).toFixed(1) + ' % is outside the calibrated ' + (L.rho[0] * 100) + '–' + (L.rho[1] * 100) + ' % (' + inp.topo + ')');
+    sd.extra += 0.15;
+  }
+  // seeds
+  if(inp.seedMode === 'poisson' || inp.seedMode === 'random'){
+    rel *= L.poisson;
+    if(inp.seedMode === 'random'){ uncal.push('uniform-random seeds (Poisson-disk factor used)'); sd.extra += 0.08; }
+    else if(Math.abs(inp.regularity - 0.9) > 0.05){ notes.push('Poisson regularity ' + inp.regularity.toFixed(2) + ' (calibrated at 0.90)'); sd.extra += 0.03; }
+  } else if(inp.seedMode === 'kelvin' || inp.seedMode === 'weairePhelan'){
+    uncal.push((inp.seedMode === 'kelvin' ? 'Kelvin' : 'Weaire–Phelan') + ' lattice — ordered foams are not calibrated (disordered law used)');
+    sd.extra += 0.25;
+  }
+  // plateau borders: factor while the swell adds mass at this thickness
+  let swell = 0, fP = 1;
+  if(inp.topo === 'plateau' && inp.plateauK > 0){
+    swell = inp.rhoNoSwell > 0 ? Math.max(0, 1 - inp.rhoNoSwell / rho) : 0;
+    const g = Math.min(1, swell / C.plateau.fullAt);
+    fP = 1 + C.plateau.A * (1 - Math.exp(-inp.plateauK / C.plateau.k0)) * g;
+    rel *= fP;
+    sd.extra = Math.hypot(sd.extra, C.plateau.rms);
+    if(inp.plateauK > 0.3) { notes.push('plateau k above the calibrated 0.3'); sd.extra += 0.03; }
+  }
+  if(inp.organic > 0){ uncal.push('organic node growth is not calibrated'); sd.extra += 0.15; }
+  if(!inp.normalize){ uncal.push('normalize off (calibrated with normalize on)'); sd.extra += 0.1; }
+  if(!inp.periodic) notes.push('bounded foam — the estimate assumes the cube repeats');
+  if(Math.abs(inp.nuS - C.nuS) > 0.05) notes.push('calibrated at ν_s = 0.3; values scale with E_s, only weakly with ν_s');
+  Ebar *= rel;
+  const nu = closed ? L.nu : Math.min(0.45, Math.max(0.2, L.nu0 + L.nu1 * rho));
+  // stretch split (mean kept)
+  const s = inp.stretch, w = s.map(v => Math.pow(v, L.m)), ws = w[0] + w[1] + w[2];
+  const E = w.map(v => Ebar * 3 * v / ws);
+  const smax = Math.max(...s), smin = Math.min(...s);
+  if(smax / smin > 1.01){
+    sd.extra = Math.hypot(sd.extra, 0.05);
+    if(smax / smin > C.stretchMax + 1e-9){ notes.push('stretch ratio ' + (smax / smin).toFixed(2) + ' : 1 beyond the calibrated 2 : 1'); sd.extra += 0.05; }
+  }
+  const Gbar = Ebar / (2 * (1 + nu));
+  const gp = [[1, 2], [0, 2], [0, 1]].map(p => Math.pow(E[p[0]] * E[p[1]] / (Ebar * Ebar), L.r / 2));   // yz, xz, xy
+  const gm = (gp[0] + gp[1] + gp[2]) / 3;
+  const G = gp.map(v => Gbar * v / gm);
+  const sdMean = Math.sqrt(sd.fit ** 2 + sd.real ** 2 + sd.cell ** 2 + sd.extra ** 2);
+  const sdAxis = Math.sqrt(sdMean ** 2 + (L.axis * Math.sqrt(L.cells / Math.max(inp.cells, 1))) ** 2);
+  const Es = inp.Es;
+  return {
+    rho, nu, Ebar: Ebar * Es, Ex: E[0] * Es, Ey: E[1] * Es, Ez: E[2] * Es, Gyz: G[0] * Es, Gxz: G[1] * Es, Gxy: G[2] * Es,
+    sdMean, sdAxis, sdLog10: Math.log10(1 + sdAxis), calibrated: uncal.length === 0, notes, uncal, swell, fPlateau: fP, factor: rel
+  };
+}
+
+// ── UI ───────────────────────────────────────────────────────────────────────
+let lastEstimate = null;
+function estStale(){
+  if(!lastEstimate) return;
+  lastEstimate = null;
+  $('homo-results').classList.add('stale');
+  $('homo-status').textContent = 'design changed — estimate again';
+}
+async function runEstimate(){
+  const btn = $('runBtn');
+  if(state.seeds.length < 4){ $('homo-status').textContent = 'need at least 4 seeds'; return; }
+  btn.disabled = true; btn.textContent = 'Estimating…';
+  $('homo-status').textContent = 'sampling the field at 64³…';
+  const t0 = performance.now();
+  try {
+    const json = buildExportJSON(), N = 64;
+    const jsons = [json];
+    const plateau = state.topology === 'plateau' && state.plateauK > 0;
+    if(plateau){ const j0 = JSON.parse(JSON.stringify(json)); j0.geometry.plateau_k = 0; jsons.push(j0); }
+    const fr = await sampleSolidFractions(jsons, N);
+    const Es = parseFloat($('Es').value) || 110, nuS = parseFloat($('nuS').value);
+    const est = foamEstimate({
+      topo: state.topology, rho: fr[0], rhoNoSwell: plateau ? fr[1] : fr[0], seedMode: state.seedMode, regularity: state.regularity,
+      plateauK: state.topology === 'plateau' ? state.plateauK : 0, organic: state.organic, normalize: state.normalize,
+      stretch: state.aniso ? [state.anisoX, state.anisoY, state.anisoZ] : [1, 1, 1], cells: state.actualCount, periodic: state.periodic,
+      Es, nuS: isFinite(nuS) ? nuS : 0.3
+    });
+    lastEstimate = { est, N, Es, nuS: isFinite(nuS) ? nuS : 0.3, ms: performance.now() - t0 };
+    showEstimate(lastEstimate);
+  } catch(err){
+    console.error('[estimate]', err);
+    $('homo-status').textContent = 'estimate failed: ' + err.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Estimate stiffness';
+  }
+}
+function showEstimate(r){
+  const e = r.est, U = stiffUnit([e.Ex, e.Ey, e.Ez, e.Gxy, e.Gxz, e.Gyz]);
+  $('homo-results').classList.remove('stale');
+  $('homo-results').style.display = 'block';
+  $('homo-status').textContent = r.N + '³ sample · ρ ' + (e.rho * 100).toFixed(2) + ' % · ' + Math.round(r.ms) + ' ms';
+  document.querySelectorAll('.stiff-unit').forEach(s => s.textContent = ' ' + U.name);
+  $('rv').textContent = (e.rho * 100).toFixed(1) + '%';
+  $('rex').textContent = fmtStiff(e.Ex, U); $('rey').textContent = fmtStiff(e.Ey, U); $('rez').textContent = fmtStiff(e.Ez, U);
+  $('rgyz').textContent = fmtStiff(e.Gyz, U); $('rgxz').textContent = fmtStiff(e.Gxz, U); $('rgxy').textContent = fmtStiff(e.Gxy, U);
+  $('rnu').textContent = e.nu.toFixed(3);
+  const ratio = Math.max(e.Ex, e.Ey, e.Ez) / Math.min(e.Ex, e.Ey, e.Ez);
+  $('rratio').textContent = ratio.toFixed(2);
+  const m = $('homo-method');
+  m.className = 'homo-method' + (e.calibrated ? ' cal' : ' uncal');
+  m.innerHTML = (e.calibrated ? '<b>Calibrated estimate</b>' : '<b>Not calibrated</b>') +
+    ' · fitted to ' + FOAM_CAL.runs + ' F13LD.lab FFT homogenizations (' + FOAM_CAL.date + '); typically within ±' + Math.round(100 * e.sdAxis) + ' % per axis for this foam.' +
+    (e.uncal.length ? '<br><span class="warn">Outside the calibration: ' + e.uncal.join('; ') + '.</span>' : '') +
+    (e.notes.length ? '<br><span class="note">' + e.notes.join('; ') + '.</span>' : '') +
+    '<br><span class="note">For a measured answer, ⚗ Open in F13LD.lab.</span>';
+  rebuildStiffnessShader(e.Ex, e.Ey, e.Ez, e.Gxy, e.nu, e.Gxz, e.Gyz);
+  $('bell-sub').textContent = 'Log-normal spread: shaded bands = 1σ (±' + Math.round(100 * e.sdAxis) + ' %) and 2σ. Combines the fit scatter, seed-to-seed scatter at ' + state.actualCount +
+    ' cells, the open cell-count question' + (e.uncal.length ? ', and the uncalibrated settings above' : '') + '. Small numbers at the edges mark the 1σ range.';
+  renderBells([{ label: 'Ex', color: '#22d3ee' }, { label: 'Ey', color: '#e879f9' }, { label: 'Ez', color: '#facc15' }, { label: 'Gxy', color: '#a78bfa' }],
+    [e.Ex, e.Ey, e.Ez, e.Gxy], e.sdLog10, U);
+  const f = mmFactor();
+  if(f){
+    const tile = DOMAIN_SIZE * f;
+    $('mm-tile').textContent = tile.toFixed(2) + ' mm';
+    $('mm-solid').textContent = (e.rho * tile * tile * tile).toFixed(2) + ' mm³';
+    $('homog-mm-row').style.display = 'flex';
+  } else $('homog-mm-row').style.display = 'none';
+  $('method-note').innerHTML = 'Mean stiffness from the ' + (state.topology === 'closed' ? 'closed-cell law E/E<sub>s</sub> = ' + FOAM_CAL.closed.a.toFixed(3) + ' ρ + ' + FOAM_CAL.closed.b.toFixed(3) + ' ρ²'
+      : 'open-cell law E/E<sub>s</sub> = ' + FOAM_CAL.open.C.toFixed(3) + ' ρ<sup>' + FOAM_CAL.open.n.toFixed(2) + '</sup>') +
+    (e.factor !== 1 ? ' × ' + e.factor.toFixed(3) + ' (' + [state.seedMode === 'poisson' || state.seedMode === 'random' ? 'seed mode' : null, e.fPlateau !== 1 ? 'plateau borders, ' + Math.round(100 * e.swell) + ' % of the solid' : null].filter(Boolean).join(', ') + ')' : '') +
+    '; ρ is the exact field sampled at 64³ (the geometry F13LD.mesh exports). Shear G = E / 2(1 + ν); anisotropy splits E as stretch<sup>' + (state.topology === 'closed' ? FOAM_CAL.closed.m : FOAM_CAL.open.m).toFixed(2) + '</sup>. Calibration: F13LD.lab docs/FOAM_CALIBRATION.md.';
+  const b = $('exportBtn');
+  b.textContent = 'Export JSON (+ estimate)'; b.style.borderColor = 'var(--accent-deep)'; b.style.color = 'var(--accent)';
+}
+// homogenization block, field names as F13LD.tpms so F13LD.mesh / F13LD.lab read it
+function estimateBlock(){
+  if(!lastEstimate) return null;
+  const e = lastEstimate.est, r3 = v => parseFloat(v.toFixed(4));
+  const E = (e.Ex + e.Ey + e.Ez) / 3, s11 = 1 / E, s12 = -e.nu / E, d = (s11 - s12) * (s11 + 2 * s12);
+  return {
+    grid: lastEstimate.N, E_solid_GPa: lastEstimate.Es, poisson: lastEstimate.nuS,
+    volume_fraction: parseFloat((e.rho * 100).toFixed(2)),
+    Ex_GPa: r3(e.Ex), Ey_GPa: r3(e.Ey), Ez_GPa: r3(e.Ez), Gxy_GPa: r3(e.Gxy), Gxz_GPa: r3(e.Gxz), Gyz_GPa: r3(e.Gyz),
+    nu_eff: parseFloat(e.nu.toFixed(4)),
+    anisotropy: parseFloat((2 * e.Gxy / ((s11 + s12) / d - (-s12 / d))).toFixed(4)),   // Zener A, as F13LD.tpms
+    method: 'F13LD.lab-calibrated estimate v' + FOAM_CAL.version + ' (' + FOAM_CAL.runs + ' runs, ' + FOAM_CAL.date + ')',
+    calibrated: e.calibrated, uncertainty_log10_sd: parseFloat(e.sdLog10.toFixed(4)),
+    notes: e.uncal.concat(e.notes)
+  };
+}
+$('runBtn').addEventListener('click', runEstimate);
+
+// ── Directional stiffness surface (from F13LD.tpms) ──────────────────────────
+let sgl=null,sprog=null,squadBuf=null,suRes,suRot,suZoom;
+let sRotMat=[1,0,0,0,1,0,0,0,1];
+let sInitialized=false,sZoom=3.3;
+const SVERT='#version 300 es\nin vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}';
+function buildStiffFrag(Ex,Ey,Ez,Gxy,nu,Gxz,Gyz){
+  // Orthotropic directional modulus: 1/E(n) = Σ nᵢ⁴/Eᵢ + Σ nᵢ²nⱼ²·(1/Gᵢⱼ − 2ν/√(EᵢEⱼ))
+  const Emx=Math.max(Ex,Ey,Ez,1e-12),fl=v=>Math.max(v,Emx*1e-3);
+  const e1=fl(Ex),e2=fl(Ey),e3=fl(Ez),g12=fl(Gxy),g13=fl(Gxz),g23=fl(Gyz);
+  const S1=1/e1,S2=1/e2,S3=1/e3;
+  const Sxy=1/g12-2*nu/Math.sqrt(e1*e2),Sxz=1/g13-2*nu/Math.sqrt(e1*e3),Syz=1/g23-2*nu/Math.sqrt(e2*e3);
+  const Edir=(x,y,z)=>{const a=x*x,b=y*y,c=z*z;return 1/Math.max(a*a*S1+b*b*S2+c*c*S3+a*b*Sxy+a*c*Sxz+b*c*Syz,1e-12);};
+  let Emax=0;const NS=2000;
+  for(let i=0;i<NS;i++){const zz=1-(i+.5)*2/NS,r=Math.sqrt(1-zz*zz),ph=i*2.399963;Emax=Math.max(Emax,Edir(r*Math.cos(ph),r*Math.sin(ph),zz));}
+  Emax*=1.08;
+  const f=v=>v.toExponential(8);
+  return`#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 res;uniform mat3 rot;uniform float zoom;
+float S1=${f(S1)};float S2=${f(S2)};float S3=${f(S3)};float Sxy=${f(Sxy)};float Sxz=${f(Sxz)};float Syz=${f(Syz)};float Emax=${f(Emax)};
+float Edir(vec3 n){vec3 q=n*n;float inv=q.x*q.x*S1+q.y*q.y*S2+q.z*q.z*S3+q.x*q.y*Sxy+q.x*q.z*Sxz+q.y*q.z*Syz;return 1.0/max(inv,1e-12);}
+float implicit(vec3 P){float r=length(P);if(r<0.001)return -1.0;return r-Edir(P/r)/Emax;}
+vec3 nrm(vec3 P){float e=0.004;return normalize(vec3(implicit(P+vec3(e,0.0,0.0))-implicit(P-vec3(e,0.0,0.0)),implicit(P+vec3(0.0,e,0.0))-implicit(P-vec3(0.0,e,0.0)),implicit(P+vec3(0.0,0.0,e))-implicit(P-vec3(0.0,0.0,e))));}
+void main(){
+  vec2 uv=(gl_FragCoord.xy-res*0.5)/min(res.x,res.y);
+  vec3 ro=rot*vec3(0.0,0.0,zoom);vec3 rd=normalize(rot*vec3(uv.x,uv.y,-1.6));
+  float r=clamp(length(uv)*1.1,0.0,1.0);
+  vec4 bg=vec4(mix(vec3(0.10,0.08,0.05),vec3(0.02,0.015,0.01),r*r),1.0);
+  float bR=1.15;float b2=dot(ro,rd),c2=dot(ro,ro)-bR*bR;float disc=b2*b2-c2;
+  if(disc<0.0){fragColor=bg;return;}
+  float sq=sqrt(disc);float tEn=max(-b2-sq,0.0),tEx=-b2+sq;
+  if(tEx<0.0){fragColor=bg;return;}
+  float t=tEn,hit=-1.0,ss=0.012;float prev=implicit(ro+rd*t);
+  for(int i=0;i<420;i++){t+=ss;if(t>tEx)break;float g=implicit(ro+rd*t);if(prev*g<0.0){hit=t-ss*(g/(g-prev));break;}prev=g;}
+  if(hit<0.0){fragColor=bg;return;}
+  vec3 pos=ro+rd*hit;vec3 n=nrm(pos);if(dot(n,-rd)<0.0)n=-n;
+  float Enorm=clamp(Edir(normalize(pos))/Emax,0.0,1.0);
+  vec3 base=mix(vec3(0.55,0.43,0.24),vec3(0.91,0.83,0.64),Enorm);
+  vec3 l1=normalize(vec3(1.0,1.8,2.0)),l2=normalize(vec3(-0.8,-0.3,0.6));
+  float diff=0.35+max(dot(n,l1),0.0)*0.7+max(dot(n,l2),0.0)*0.25;
+  float spec=pow(max(dot(reflect(-l1,n),-rd),0.0),60.0)*0.6;
+  float rim=pow(1.0-max(dot(n,-rd),0.0),2.5)*0.35;
+  fragColor=vec4(clamp(base*diff+vec3(spec)+base*rim,0.0,1.0),1.0);
+}
+`;}
+function mkSShader(type,src){const s=sgl.createShader(type);sgl.shaderSource(s,src);sgl.compileShader(s);if(!sgl.getShaderParameter(s,sgl.COMPILE_STATUS))console.error(sgl.getShaderInfoLog(s));return s;}
+function initStiffnessGL(){
+  const cv=$('ellcv');
+  const w=cv.offsetWidth||180;cv.width=w;cv.height=w;
+  sgl=cv.getContext('webgl2');if(!sgl){cv.style.display='none';return false;}
+  squadBuf=sgl.createBuffer();sgl.bindBuffer(sgl.ARRAY_BUFFER,squadBuf);sgl.bufferData(sgl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),sgl.STATIC_DRAW);
+  sRotMat=mat3Mul(rotAxisAngle(0,1,0,0.6),rotAxisAngle(1,0,0,-0.3));
+  sInitialized=true;return true;
+}
+function rebuildStiffnessShader(Ex,Ey,Ez,Gxy,nu,Gxz,Gyz){
+  if(!sInitialized&&!initStiffnessGL())return;
+  const p=sgl.createProgram();
+  const vs=mkSShader(sgl.VERTEX_SHADER,SVERT),fs=mkSShader(sgl.FRAGMENT_SHADER,buildStiffFrag(Ex,Ey,Ez,Gxy,nu,Gxz,Gyz));
+  sgl.attachShader(p,vs);sgl.attachShader(p,fs);sgl.linkProgram(p);
+  sgl.detachShader(p,vs);sgl.detachShader(p,fs);sgl.deleteShader(vs);sgl.deleteShader(fs);
+  if(!sgl.getProgramParameter(p,sgl.LINK_STATUS)){console.error(sgl.getProgramInfoLog(p));sgl.deleteProgram(p);return;}
+  if(sprog)sgl.deleteProgram(sprog);
+  sprog=p;sgl.useProgram(sprog);
+  sgl.bindBuffer(sgl.ARRAY_BUFFER,squadBuf);
+  const loc=sgl.getAttribLocation(sprog,'p');
+  sgl.enableVertexAttribArray(loc);sgl.vertexAttribPointer(loc,2,sgl.FLOAT,false,0,0);
+  suRes=sgl.getUniformLocation(sprog,'res');suRot=sgl.getUniformLocation(sprog,'rot');suZoom=sgl.getUniformLocation(sprog,'zoom');
+}
+function drawStiffnessSurface(){
+  if(!sprog||!suRes||$('homo-results').style.display!=='block')return;
+  const cv=$('ellcv');
+  sRotMat=orthonormalize(mat3Mul(rotAxisAngle(0,1,0,0.003),sRotMat));
+  sgl.viewport(0,0,cv.width,cv.height);
+  sgl.uniform2f(suRes,cv.width,cv.height);
+  sgl.uniformMatrix3fv(suRot,false,new Float32Array(sRotMat));
+  sgl.uniform1f(suZoom,sZoom);
+  sgl.drawArrays(sgl.TRIANGLE_STRIP,0,4);
+}
+
+// ── Likely-range rows and units (from F13LD.tpms) ────────────────────────────
+function stiffUnit(vals){
+  const m=Math.max(...vals.filter(v=>v>0),0);
+  return (m>=1||m===0)?{name:'GPa',k:1}:m>=1e-3?{name:'MPa',k:1e3}:{name:'kPa',k:1e6};
+}
+function fmtStiff(v,u){
+  if(!(v>0))return '~0';
+  const x=v*u.k;
+  return x>=100?x.toFixed(0):x>=1e-3?x.toPrecision(3):x.toExponential(1);
+}
+function renderBells(axes,vals,sdLog10,U){
+  const container=$('bell-rows');container.innerHTML='';
+  const W=120,pad=8,K=10**sdLog10,CURVE_MAX=56,CURVE_MIN=10,LABELS=24;
+  const maxVal=Math.max(...vals.filter(v=>v>0),1e-30);
+  const cellH=v=>LABELS+(v>0?Math.max(Math.round(CURVE_MAX*(v/maxVal)),CURVE_MIN):CURVE_MIN);
+  const row=document.createElement('div');
+  row.className='bell-grid';row.style.cssText='display:grid;grid-template-columns:repeat('+axes.length+',1fr);gap:4px;align-items:end';
+  const fmt=v=>fmtStiff(v,U);
+  function hexAlpha(hex,a){const r=parseInt(hex.slice(1,3),16),g2=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`rgba(${r},${g2},${b},${a})`;}
+  axes.forEach(({label,color},i)=>{
+    const mu=vals[i],Hc=cellH(mu);const cell=document.createElement('div');cell.style.cssText='background:var(--card);border-radius:4px;overflow:hidden';
+    const lm=Math.log10(mu),lo=lm-3*sdLog10,hi=lm+3*sdLog10,tx=l=>pad+(l-lo)/(hi-lo)*(W-2*pad);
+    const top=13,bot=Hc-11,h=bot-top,g=l=>Math.exp(-0.5*((l-lm)/sdLog10)**2);
+    const pts=[];for(let k=0;k<=60;k++){const l=lo+k/60*(hi-lo);pts.push([tx(l),bot-g(l)*h*0.88]);}
+    const curve=pts.map((p,k)=>(k===0?'M':'L')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+    const band=(a,b)=>{const fp=[];for(let k=0;k<=60;k++){const l=lo+k/60*(hi-lo);if(l<a||l>b)continue;fp.push([tx(l),bot-g(l)*h*0.88]);}
+      return fp.length<2?'':'M'+fp[0][0].toFixed(1)+' '+bot+' L'+fp.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L')+' L'+fp[fp.length-1][0].toFixed(1)+' '+bot+' Z';};
+    const px=tx(lm).toFixed(1);
+    cell.innerHTML=`<svg width="100%" viewBox="0 0 ${W} ${Hc}" style="display:block">
+      <path d="${band(lm-2*sdLog10,lm+2*sdLog10)}" fill="${hexAlpha(color,0.12)}"/>
+      <path d="${band(lm-sdLog10,lm+sdLog10)}" fill="${hexAlpha(color,0.28)}"/>
+      <path d="${curve}" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.9"/>
+      <line x1="${px}" y1="${bot}" x2="${px}" y2="${top}" stroke="${color}" stroke-width="1" opacity="0.4" stroke-dasharray="2 2"/>
+      <line x1="${pad}" y1="${bot}" x2="${W-pad}" y2="${bot}" stroke="#333" stroke-width="0.5"/>
+      <text x="${W/2}" y="9" text-anchor="middle" font-size="9" font-weight="500" fill="${color}">${label}</text>
+      <text x="${px}" y="${Hc-3}" text-anchor="middle" font-size="8" fill="${color}" opacity="0.9">${fmt(mu)} ${U.name}</text>
+      <text x="${pad}" y="${Hc-3}" text-anchor="start" font-size="6.5" fill="#666">${fmt(mu/K)}</text>
+      <text x="${W-pad}" y="${Hc-3}" text-anchor="end" font-size="6.5" fill="#666">${fmt(mu*K)}</text>
+    </svg>`;
+    row.appendChild(cell);
+  });
+  container.appendChild(row);
 }
 
 // ============================================================================
@@ -2125,6 +2552,12 @@ requestAnimationFrame(frame);
         what:'Bake resolution and raymarch sampling of the live preview.',
         see:'Higher = cleaner thin walls and smoother edges, slower updates.',
         why:'Preview fidelity only — the exported recipe is the same at any setting.' }
+    ]},
+    { title:'Stiffness', items:[
+      { id:'estimate', label:'Estimate stiffness · E_s · ν_s', anchor:{row:'#runBtn'},
+        what:'Measures the solid fraction of the exact foam (64³ sample) and estimates Ex, Ey, Ez, the shear moduli and Poisson\u2019s ratio from laws fitted to 67 F13LD.lab FFT homogenizations of this same geometry.',
+        see:'A directional stiffness surface, per-axis values, a likely range for each, and a note when a setting is outside the calibration (ordered lattices, organic growth, uniform-random seeds, density outside the fitted range).',
+        why:'Compare foam designs and size them early. For a measured answer, Open in F13LD.lab.' }
     ]},
     { title:'Handoff', items:[
       { id:'export', label:'Export JSON / Open in F13LD.mesh / Add to queue',
