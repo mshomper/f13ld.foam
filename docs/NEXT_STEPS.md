@@ -54,3 +54,4 @@ Mesh's own follow-ups are in its `docs/SESSION_RECAP_2026-10-04.md`. Two of them
 - **Versions:** bump the version in `index.html` (header and recipe `meta.version`) and the README on each release.
 - **Commits and PRs:** no claude.ai session links; `Co-Authored-By: Claude …` trailers are fine. GitHub GraphQL is blocked from Claude sessions, so open and merge PRs with `gh api` (REST).
 - **Wording:** never use the words "genuine" / "genuinely" in docs or UI text.
+- **Branches:** all merged branches can go (Matt, 2026-10-04). Claude sessions can't delete them, so Matt does, or turns on "Automatically delete head branches" in Settings.
