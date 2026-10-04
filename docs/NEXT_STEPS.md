@@ -31,6 +31,7 @@ The field code (`FoamSeeds`, `foamSeedsFromRecipe`, `buildFoamSDF`, `buildFoamSD
    - Decide on the ±7 % cell-count band, which depends on the cell-count pass.
    - Update the README's "Stiffness estimate" numbers, and replace its "Calibration status" paragraph with the new status.
 3. **Decide whether to calibrate the v0.6.0 foams.** Wet, fillet / node, two-size, symmetric seeds, FCC / C15 and disorder all get "not calibrated" estimates today. The lab sweep already takes their columns (`border`, `fillet`, `node`, `size_ratio`, `large_fraction`, `jitter`; topology `wet`), so a pass is a run list plus a fit.
+4. **Rectangular tiles, then Z and σ phases** — next feature, plan in §3. Direction agreed (2026-10-04); three decisions still open before building (§3.4).
 
 ## 2. Exporting foams through F13LD.mesh
 
@@ -44,7 +45,61 @@ Mesh's own follow-ups are in its `docs/SESSION_RECAP_2026-10-04.md`. Two of them
 - **Open edges after simplify.** Mesh simplification leaves some open edges on very fragmented foam (thin walls at coarse quality). This predates v0.9.3.
 - **Triangle-count estimate.** The export panel's triangle estimate is far too low for foam (about 5k shown, 395k actual in the test scene).
 
-## 3. Rules for changes
+## 3. Rectangular tiles + Z and σ phases (next feature)
+
+### 3.1 Why rectangular (orthorhombic) only
+
+A box with its own length on each axis covers every non-cubic need:
+- **slender parts** — tiles long in one direction;
+- **σ phase** — tetragonal unit cell (c/a ≈ 0.52);
+- **Z phase** — hexagonal cell, which fits a rectangular cell with sides 1 : √3 (twice the seeds).
+
+Skewed (triclinic) boxes would touch far more code for no extra reach.
+
+### 3.2 Plan (propose to Matt before building)
+
+1. **Recipe.** `domain.size: [Lx, Ly, Lz]` in tile units, centred on the origin. No `size` = the 10-unit cube, so every existing recipe builds exactly as before.
+2. **Shared code (all three copies, `FoamSeeds.VERSION` 3).**
+   - Period per axis everywhere: seed generators, `powerCells`, the field's wrap and padded copies.
+   - Mean spacing from the box volume.
+   - Lattices fill whole cells per axis.
+3. **F13LD.foam.**
+   - Box proportion controls; lattices set their own proportions.
+   - Non-cubic bake texture and raymarch box.
+   - mm read-outs per axis; `tile_mm` per axis.
+   - Add **Z** and **σ** to the lattice list, with the disorder slider.
+4. **F13LD.mesh.** Cell size per axis, so one tile maps to a rectangular brick. Tiling, shape clipping and the export-size estimate follow.
+5. **F13LD.lab.** The FFT solver only takes cubic samples: refuse non-cubic foams with an explanation, as it refuses non-periodic ones today (unless §3.4 decides otherwise).
+6. **Stiffness estimate.** Mark non-cubic tiles "not calibrated".
+7. **Tests.** Cube recipes byte-identical in mesh `harness.js`. Add lab `validate-foam.js` cases: brute-force reference in a rectangular box, tiling per axis, cell face counts for Z and σ.
+
+### 3.3 Z and σ seed positions
+
+- **Source.** Take positions from the crystallographic tables (σ: P4₂/mnm, 30 sites per cell; Z: P6/mmm, 7 per hexagonal cell → 14 in the 1 : √3 rectangular cell).
+- **Check.** Verify by counting Voronoi faces per cell before shipping: Frank–Kasper cells have 12, 14, 15 or 16 faces. This is how C15 was checked (16 and 12).
+
+### 3.4 Open decisions (Matt)
+
+- Go ahead with rectangular tiles as described?
+- Z and σ in the same pass, or tiles first and the lattices later?
+- Lab: refuse non-cubic foams for now, or look at rectangular cells in its solver?
+
+## 4. Later ideas (from the 2026-10-04 research)
+
+Shipped in v0.6.0: exact field, two-size Laguerre cells, hyperuniform Lloyd + S(k), lattice disorder, FCC / C15, symmetric seeds, wet borders, fillet / node. Still open, roughly in value order:
+
+1. **Explicit periodic cell graph** (vertices / edges / faces, built once from the seeds). It unlocks:
+   - short-strut cleanup at a mm threshold;
+   - struts that taper toward the nodes;
+   - read-outs for faces per cell, edge lengths and minimum strut length in mm;
+   - **Delaunay struts** (seed to seed, stretch-dominated) and a Voronoi + Delaunay hybrid.
+2. **Plateau-law relaxation** of the graph: 109.47° / 120° node angles, a light stand-in for Surface Evolver.
+3. **Sheet ("soft") foams.** A smooth minimum of the exact plane distances gives bicontinuous stochastic sheets. Intersecting two such fields from different seeds is the stochastic analogue of PI-TPMS pipe networks.
+4. **Inverse design.** Nudge seeds toward a target stretch or stiffness, trained on F13LD.lab runs, via Synth.
+
+Full write-up with sources: [`RESEARCH_2026-10-04.md`](RESEARCH_2026-10-04.md). Decisions and findings from the v0.6.0 session: [`SESSION_RECAP_2026-10-04.md`](SESSION_RECAP_2026-10-04.md).
+
+## 5. Rules for changes
 
 - **Shared field code:** edit all three copies together; bump `FoamSeeds.VERSION` for generator changes. Then run:
   - F13LD.mesh `tests/foamseeds.js <mesh build> <this index.html>`;
