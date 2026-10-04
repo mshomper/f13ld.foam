@@ -30,7 +30,7 @@ Live: https://mshomper.github.io/f13ld.foam
 
 **Exact field (v0.6.0):** the open and plateau laws were fitted on the previous field, whose struts ran thicker near nodes; their estimates carry a note and a wider range until the lab calibration is re-run on the exact field (F13LD.lab `docs/FOAM_CALIBRATION.md` §11). The closed law carries over.
 
-**Calibration status (2026-10-03): provisional.** 27 of the 67 lab runs behind these laws stopped at the lab's old 300-iteration cap (open and plateau foams at 18–35 %, closed at 12–18 % on the coarse grid), and a stopped solve reads stiff, so the open law may read high above ~18 % solid. The re-run at the new 1000-iteration cap, a cell-count pass and a refit are next (F13LD.lab `docs/FOAM_CALIBRATION.md` §8, §10); the constants will move in v0.5.1.
+**Calibration status (2026-10-04): provisional.** 27 of the 67 lab runs behind these laws stopped at the lab's old 300-iteration cap (open and plateau foams at 18–35 %, closed at 12–18 % on the coarse grid), and a stopped solve reads stiff, so the open law may read high above ~18 % solid. Next: re-run the whole calibration on the exact field at the 1000-iteration cap, plus the plateau and cell-count passes, then refit (F13LD.lab `docs/FOAM_CALIBRATION.md` §11). The constants will move in v0.6.1. Plan: [`docs/NEXT_STEPS.md`](docs/NEXT_STEPS.md).
 
 Each value comes with a likely range (fit scatter, seed-to-seed scatter at this cell count, and an open cell-count question still being measured). Ordered lattices (Kelvin, Weaire–Phelan), uniform-random seeds, organic growth, normalize off and densities outside 5–35 % (open) / 12–35 % (closed) get an estimate marked **not calibrated**. The result rides in the exported recipe as a `homogenization` block (F13LD.tpms field names), so F13LD.mesh shows it. For a measured answer, use **Open in F13LD.lab**.
 
@@ -44,7 +44,7 @@ Each value comes with a likely range (fit scatter, seed-to-seed scatter at this 
 
 ```
 { "family": "foam",
-  "meta":     { "tool": "f13ld.foam", "version": "0.5.0", … },
+  "meta":     { "tool": "f13ld.foam", "version": "0.6.0", … },
   "domain":   { "world": [-5, 5], "periodic": true, … },
   "seeds":    { "mode", "count", "regularity", "lloyd_iterations", "rng_seed",
                 "generator": "FoamSeeds/1", "positions": [x, y, z, …] },
