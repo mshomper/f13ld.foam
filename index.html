@@ -104,6 +104,9 @@ canvas#c{display:block;width:100%;touch-action:none}
 .mm-hint{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dimmest);font-variant-numeric:tabular-nums;margin-left:2px;white-space:nowrap}
 .mm-hint.show{color:#8a7d62}
 .sc-group.hidden{display:none !important}
+#sk-wrap{margin-top:10px}
+#sk-wrap .sk-head{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--dim);font-family:'IBM Plex Mono',monospace;margin-bottom:4px}
+#skCanvas{width:100%;height:90px;display:block}
 
 .cellsize-inp,.num-inp{
   width:54px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:2px 4px;
@@ -221,7 +224,7 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
     <div class="fh-right">
       <button class="fh-mesh-btn" onclick="openInMesh()">⬡ Open in F13LD.mesh</button>
       <button class="fh-mesh-btn" onclick="openInLab()" title="Homogenize this foam in F13LD.lab — stiffness from the validated FFT solver">⚗ Open in F13LD.lab</button>
-      <span class="fh-version">v0.5.0</span>
+      <span class="fh-version">v0.6.0</span>
       <div class="fh-icon">
         <svg width="18" height="18" viewBox="0 0 40 40" fill="none" stroke="#5C4624" stroke-width="1.9" stroke-linejoin="round">
           <path d="M5 8 L17 4 L24 12 L18 21 L7 19 Z"/>
@@ -271,12 +274,13 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
         <div class="mode-strip">
           <button class="mode-btn" id="mOpen" data-topo="open" title="Struts along the edges where 3+ cells meet">open</button>
           <button class="mode-btn" id="mClosed" data-topo="closed" title="Walls on the faces between neighbouring cells">closed</button>
-          <button class="mode-btn active" id="mPlateau" data-topo="plateau" title="Soap-foam Plateau borders: struts with rounded, swollen junctions">plateau</button>
+          <button class="mode-btn active" id="mPlateau" data-topo="plateau" title="Struts with swollen junctions">plateau</button>
+          <button class="mode-btn" id="mWet" data-topo="wet" title="Wet foam: true Plateau borders — the material left between rounded cells, with concave triangular struts and tetrahedral nodes">wet</button>
         </div>
       </div>
       <div class="sc-group">
         <label>cells</label>
-        <input type="range" id="sCount" min="50" max="800" step="10" value="200">
+        <input type="range" id="sCount" min="0" max="1000" step="1" value="700" title="Number of cells in the repeating cube. Fine steps at low counts; lattices go down to a single cube.">
         <span class="sv" id="vsCount">200</span>
         <span class="mm-hint" id="vsCount_mm"></span>
       </div>
@@ -285,22 +289,34 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
         <input type="number" id="cellSizeMM" class="cellsize-inp" min="0" step="0.1" value="2" title="Average cell diameter in mm. Display-only — does not affect the JSON export. Stored per-browser.">
         <span style="font-size:11px;color:var(--dim)">mm</span>
       </div>
-      <div class="sc-group">
+      <div class="sc-group" id="grp-thick">
         <label>thickness</label>
         <input type="range" id="sThick" min="0.02" max="0.50" step="0.01" value="0.08">
         <span class="sv" id="vsThick">0.08</span>
         <span class="mm-hint" id="vsThick_mm"></span>
-        <button class="pill-toggle on" id="normToggle" title="Divide the field by its gradient so thickness is a true perpendicular distance, giving uniform walls and struts. Off = raw level set; thickness varies with the local gradient.">normalize: on</button>
       </div>
       <div class="sc-group" id="grp-plateauK">
         <label>plateau k</label>
         <input type="range" id="sPlateauK" min="0.01" max="0.20" step="0.01" value="0.05">
         <span class="sv" id="vsPlateauK">0.05</span>
       </div>
-      <div class="sc-group">
-        <label>organic</label>
-        <input type="range" id="sOrganic" min="0" max="10" step="0.05" value="0">
-        <span class="sv" id="vsOrganic">0.00</span>
+      <div class="sc-group hidden" id="grp-border">
+        <label>border</label>
+        <input type="range" id="sBorder" min="0.05" max="1.50" step="0.01" value="0.40" title="Plateau border radius: each cell is rounded by this radius and the material is what's left between the rounded cells. Larger = wetter foam, thicker borders.">
+        <span class="sv" id="vsBorder">0.40</span>
+        <span class="mm-hint" id="vsBorder_mm"></span>
+      </div>
+      <div class="sc-group" id="grp-fillet">
+        <label>fillet</label>
+        <input type="range" id="sFillet" min="0" max="0.60" step="0.01" value="0" title="Concave fillet where struts (or walls) meet — a true blend radius. Mid-span thickness is unchanged.">
+        <span class="sv" id="vsFillet">0.00</span>
+        <span class="mm-hint" id="vsFillet_mm"></span>
+      </div>
+      <div class="sc-group" id="grp-node">
+        <label>node</label>
+        <input type="range" id="sNode" min="0" max="0.40" step="0.01" value="0" title="Extra radius of a sphere at every node, blended into the struts by the fillet.">
+        <span class="sv" id="vsNode">0.00</span>
+        <span class="mm-hint" id="vsNode_mm"></span>
       </div>
     </div>
 
@@ -316,10 +332,17 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
         <option value="poisson" selected>Poisson-disk (blue-noise)</option>
         <option value="lloyd">Lloyd-relaxed</option>
         <option value="random">uniform random</option>
+        <option value="bimodal">two-size mix (exact cell volumes)</option>
+      </optgroup>
+      <optgroup label="symmetric stochastic">
+        <option value="mirror">mirror (orthotropic)</option>
+        <option value="cubic">cubic</option>
       </optgroup>
       <optgroup label="lattice">
         <option value="weairePhelan">Weaire–Phelan</option>
         <option value="kelvin">Kelvin (BCC truncated octahedra)</option>
+        <option value="fcc">FCC (rhombic dodecahedra)</option>
+        <option value="c15">C15 Laves (Frank–Kasper)</option>
       </optgroup>
     </select>
     <div class="surf-controls" style="margin-top:10px">
@@ -331,14 +354,33 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
       </div>
       <div class="sc-group" id="grp-lloyd">
         <label>Lloyd iter</label>
-        <input type="range" id="sLloyd" min="0" max="12" step="1" value="4">
+        <input type="range" id="sLloyd" min="0" max="60" step="1" value="4" title="Rounds of moving each seed to its cell's centroid. Many rounds make the layout hyperuniform (see the structure factor below).">
         <span class="sv" id="vsLloyd">4</span>
+      </div>
+      <div class="sc-group hidden" id="grp-ratio">
+        <label>size ratio</label>
+        <input type="range" id="sRatio" min="1.1" max="3.0" step="0.05" value="2.0" title="Diameter of the large cells ÷ the small ones (volume ratio is this cubed).">
+        <span class="sv" id="vsRatio">2.00</span>
+      </div>
+      <div class="sc-group hidden" id="grp-large">
+        <label>large share</label>
+        <input type="range" id="sLarge" min="0.05" max="0.95" step="0.05" value="0.30" title="Share of cells that are large.">
+        <span class="sv" id="vsLarge">0.30</span>
+      </div>
+      <div class="sc-group hidden" id="grp-jitter">
+        <label>disorder</label>
+        <input type="range" id="sJitter" min="0" max="0.50" step="0.01" value="0" title="Random nudge of each lattice seed, as a fraction of the mean spacing. Kelvin keeps its 14-faced cells up to about 0.1.">
+        <span class="sv" id="vsJitter">0.00</span>
       </div>
       <div class="sc-group" id="grp-rng">
         <label>RNG seed</label>
         <input type="number" id="rngSeed" class="num-inp" value="42" step="1">
         <button class="reseed-btn" id="reseedBtn">↻ reseed</button>
       </div>
+    </div>
+    <div id="sk-wrap" title="Structure factor of the seeds: how much the seed density fluctuates at each wavelength. 1 = random (Poisson). Dropping toward 0 at the left = hyperuniform (large-scale fluctuations suppressed).">
+      <div class="sk-head"><span>structure factor S(k)</span><span id="skNote"></span></div>
+      <canvas id="skCanvas"></canvas>
     </div>
 
     <hr class="divider">
@@ -401,8 +443,8 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
 
 <script>
 // ============================================================================
-// F13LD.foam v0.5.0 — discrete cellular scaffolds
-// Seeds (CPU) → GPU bake of the 4 nearest-seed distances per voxel into a 3D
+// F13LD.foam v0.6.0 — discrete cellular scaffolds
+// Seeds (CPU) → GPU bake of the exact wall / edge distances per voxel into a 3D
 // texture → live raymarch of the foam field sampled from that texture, using
 // guaranteed-safe step lengths so rays always reach the far side of the cube.
 // Shell, camera, clip plane, help and handoff follow F13LD.tpms v1.1.0.
@@ -446,7 +488,7 @@ window.addEventListener('resize', resize);
 // STATE
 // ============================================================================
 const DOMAIN_MIN = -5, DOMAIN_MAX = 5, DOMAIN_SIZE = 10, DOMAIN_HALF = 5;
-const LATTICE_MODES = ['weairePhelan', 'kelvin'];
+const LATTICE_MODES = ['weairePhelan', 'kelvin', 'fcc', 'c15'];
 
 const state = {
   topology: 'plateau',
@@ -454,8 +496,15 @@ const state = {
   cellSizeMM: parseFloat(storeGet('f13ld_foam_cellSizeMM', '2')) || 2,
   thickness: 0.08,
   plateauK: 0.05,
-  normalize: true,
-  organic: 0,
+  normalize: true,    // v0.6.0: always — the exact field needs no gradient correction
+  organic: 0,         // v0.6.0: replaced by fillet + node (kept 0 in exports)
+  fillet: 0,          // circular blend radius where struts / walls meet
+  node: 0,            // extra node-sphere radius
+  border: 0.40,       // wet: Plateau border radius
+  sizeRatio: 2.0,     // bimodal: large ÷ small cell diameter
+  largeFraction: 0.30,// bimodal: share of large cells
+  jitter: 0,          // lattices: disorder (σ ÷ mean spacing)
+  weights: null,      // power-cell weights (bimodal)
   seedMode: 'poisson',
   regularity: 0.9,     // min spacing as a fraction of the saturating spacing
   minSpacing: 0,       // derived, internal units (set by regenerateSeeds)
@@ -487,7 +536,7 @@ function meanSpacing(N){ return DOMAIN_SIZE / Math.cbrt(Math.max(1, N)); }
 // Domain is the cube [-5, 5]³. Seeds are [x, y, z] arrays.
 const FoamSeeds = (function(){
   'use strict';
-  const VERSION = 1;
+  const VERSION = 2;
   const DMIN = -5, DMAX = 5, DSIZE = 10;
 
   // Mean seed spacing (≈ mean cell diameter) for N cells in the 10³ cube.
@@ -733,17 +782,307 @@ const FoamSeeds = (function(){
     return out;
   }
 
-  const MODES = ['poisson', 'lloyd', 'random', 'weairePhelan', 'kelvin'];
-  const LATTICE_MODES = ['weairePhelan', 'kelvin'];
+
+  // ── v2 (F13LD.foam v0.6.0): exact periodic power cells ──────────────────────
+  // Cell i = points where |p − sᵢ|² − wᵢ is smallest (w = null: plain Voronoi),
+  // built by clipping a cube around sᵢ with the bisector plane of every nearby
+  // periodic copy, nearest first, until no farther copy can cut it. Returns
+  // per-seed volume, centroid (unwrapped, near sᵢ) and Σ face area / (2|sⱼ − sᵢ|)
+  // (how fast the volume grows with wᵢ — the Newton step for the weights).
+  function clipPoly(faces, nx, ny, nz, c, nb, dist){
+    const out = [], cut = [], E = 1e-10;
+    for(const f of faces){
+      const P = f.p, np = [];
+      for(let k = 0; k < P.length; k++){
+        const a = P[k], b = P[(k + 1) % P.length];
+        const da = nx*a[0] + ny*a[1] + nz*a[2] - c, db = nx*b[0] + ny*b[1] + nz*b[2] - c;
+        const sa = da > E ? 1 : (da < -E ? -1 : 0), sb = db > E ? 1 : (db < -E ? -1 : 0);
+        if(sa <= 0) np.push(a);
+        if(sa === 0) cut.push(a);
+        if(sa*sb < 0){
+          const t = da/(da - db), q = [a[0] + t*(b[0] - a[0]), a[1] + t*(b[1] - a[1]), a[2] + t*(b[2] - a[2])];
+          np.push(q); cut.push(q);
+        }
+      }
+      if(np.length >= 3) out.push({p: np, nb: f.nb, d: f.d});
+    }
+    if(cut.length >= 3){
+      let cx = 0, cy = 0, cz = 0;
+      for(const q of cut){ cx += q[0]; cy += q[1]; cz += q[2]; }
+      cx /= cut.length; cy /= cut.length; cz /= cut.length;
+      const t0 = Math.abs(nx) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+      let u = [ny*t0[2] - nz*t0[1], nz*t0[0] - nx*t0[2], nx*t0[1] - ny*t0[0]];
+      const ul = Math.hypot(u[0], u[1], u[2]); u = [u[0]/ul, u[1]/ul, u[2]/ul];
+      const v = [ny*u[2] - nz*u[1], nz*u[0] - nx*u[2], nx*u[1] - ny*u[0]];
+      const ang = cut.map(q => Math.atan2((q[0]-cx)*v[0] + (q[1]-cy)*v[1] + (q[2]-cz)*v[2], (q[0]-cx)*u[0] + (q[1]-cy)*u[1] + (q[2]-cz)*u[2]));
+      const idx = cut.map((_, i) => i).sort((i, j) => ang[i] - ang[j]);
+      const cap = [];
+      for(const i of idx){
+        const q = cut[i], l = cap[cap.length - 1];
+        if(!l || Math.abs(q[0]-l[0]) + Math.abs(q[1]-l[1]) + Math.abs(q[2]-l[2]) > 1e-9) cap.push(q);
+      }
+      while(cap.length > 1){
+        const q = cap[0], l = cap[cap.length - 1];
+        if(Math.abs(q[0]-l[0]) + Math.abs(q[1]-l[1]) + Math.abs(q[2]-l[2]) > 1e-9) break;
+        cap.pop();
+      }
+      if(cap.length >= 3) out.push({p: cap, nb, d: dist});
+    }
+    return out;
+  }
+  // Power cells of every seed in the periodic cube. Returns per-seed volume,
+  // centroid (unwrapped, near the seed) and the shared faces as
+  // {i, j, c = area / (2·distance)} — how fast volume moves between i and j
+  // as their weights differ (the Newton matrix for the weights).
+  function powerCells(seeds, w){
+    const N = seeds.length, s0 = meanSpacing(N);
+    let wmin = 0, wmax = 0;
+    if(w){ wmin = Infinity; wmax = -Infinity; for(const x of w){ wmin = Math.min(wmin, x); wmax = Math.max(wmax, x); } }
+    const dw = wmax - wmin;
+    const pad = Math.min(DSIZE, 2.5*s0 + Math.sqrt(dw)), B = DSIZE/2 + pad;
+    const IX = [], IY = [], IZ = [], ID = [];
+    for(let a = -1; a <= 1; a++) for(let b = -1; b <= 1; b++) for(let c = -1; c <= 1; c++)
+      for(let i = 0; i < N; i++){
+        const x = seeds[i][0] + a*DSIZE, y = seeds[i][1] + b*DSIZE, z = seeds[i][2] + c*DSIZE;
+        if(x >= -B && x <= B && y >= -B && y <= B && z >= -B && z <= B){ IX.push(x); IY.push(y); IZ.push(z); ID.push(i); }
+      }
+    const M = IX.length, G = Math.max(1, Math.min(40, Math.round(2*B/s0))), cs = 2*B/G;
+    const cI = v => Math.min(G - 1, Math.max(0, Math.floor((v + B)/cs)));
+    const start = new Int32Array(G*G*G + 1), cellOf = new Int32Array(M);
+    for(let k = 0; k < M; k++){ const c = cI(IX[k]) + G*(cI(IY[k]) + G*cI(IZ[k])); cellOf[k] = c; start[c + 1]++; }
+    for(let c = 0; c < G*G*G; c++) start[c + 1] += start[c];
+    const fill = start.slice(0, G*G*G), items = new Int32Array(M);
+    for(let k = 0; k < M; k++) items[fill[cellOf[k]]++] = k;
+    const vol = new Float64Array(N), cen = [], links = [];
+    const h = DSIZE;   // starting cube half-size: a cell never reaches past its periodic copies
+    for(let i = 0; i < N; i++){
+      const sx = seeds[i][0], sy = seeds[i][1], sz = seeds[i][2], wi = w ? w[i] : 0;
+      const c0 = cI(sx), c1 = cI(sy), c2 = cI(sz), Rr = Math.ceil(pad/cs);
+      let faces = [
+        [[-h,-h,-h],[-h,h,-h],[h,h,-h],[h,-h,-h]], [[-h,-h,h],[h,-h,h],[h,h,h],[-h,h,h]],
+        [[-h,-h,-h],[h,-h,-h],[h,-h,h],[-h,-h,h]], [[-h,h,-h],[-h,h,h],[h,h,h],[h,h,-h]],
+        [[-h,-h,-h],[-h,-h,h],[-h,h,h],[-h,h,-h]], [[h,-h,-h],[h,h,-h],[h,h,h],[h,-h,h]]
+      ].map(p => ({p, nb: -1, d: 0}));
+      let rmax = Math.sqrt(3)*h;
+      // Copies ring by ring outward (a copy in ring R is at least (R − 1)·cs
+      // away); stop once no farther copy's plane can reach the cell.
+      for(let R = 0; R <= Rr && faces.length; R++){
+        const cand = [];
+        for(let a = -R; a <= R; a++){ const qx = c0 + a; if(qx < 0 || qx >= G) continue;
+          for(let b = -R; b <= R; b++){ const qy = c1 + b; if(qy < 0 || qy >= G) continue;
+            const side = a === -R || a === R || b === -R || b === R, de = (side || R === 0) ? 1 : 2*R;
+            for(let e = -R; e <= R; e += de){ const qz = c2 + e; if(qz < 0 || qz >= G) continue;
+              const c = qx + G*(qy + G*qz);
+              for(let k = start[c]; k < start[c + 1]; k++){
+                const m = items[k], dx = IX[m] - sx, dy = IY[m] - sy, dz = IZ[m] - sz, d2 = dx*dx + dy*dy + dz*dz;
+                if(d2 > 1e-18) cand.push([d2, dx, dy, dz, ID[m]]);
+              }}}}
+        cand.sort((p, q) => p[0] - q[0]);
+        for(const [d2, dx, dy, dz, j] of cand){
+          const d = Math.sqrt(d2);
+          if((d2 - dw)/(2*d) > rmax) break;   // this copy's plane, and every later one in the ring, misses the cell
+          const nx = dx/d, ny = dy/d, nz = dz/d, c = (d2 + wi - (w ? w[j] : 0))/(2*d);
+          let reach = -Infinity;
+          for(const f of faces) for(const q of f.p) reach = Math.max(reach, nx*q[0] + ny*q[1] + nz*q[2]);
+          if(reach <= c + 1e-10) continue;     // misses the current cell
+          faces = clipPoly(faces, nx, ny, nz, c, j, d);
+          if(!faces.length) break;
+          rmax = 0;
+          for(const f of faces) for(const q of f.p) rmax = Math.max(rmax, q[0]*q[0] + q[1]*q[1] + q[2]*q[2]);
+          rmax = Math.sqrt(rmax);
+        }
+        const dmin = R*cs;
+        if(dmin > 0 && (dmin*dmin - dw)/(2*dmin) > rmax) break;
+      }
+      let V = 0, cx = 0, cy = 0, cz = 0;
+      for(const f of faces){
+        const P = f.p, a = P[0];
+        let fx = 0, fy = 0, fz = 0;
+        for(let k = 1; k + 1 < P.length; k++){
+          const b = P[k], c = P[k + 1];
+          const tv = (a[0]*(b[1]*c[2] - b[2]*c[1]) - a[1]*(b[0]*c[2] - b[2]*c[0]) + a[2]*(b[0]*c[1] - b[1]*c[0]))/6;
+          V += tv; cx += tv*(a[0] + b[0] + c[0])/4; cy += tv*(a[1] + b[1] + c[1])/4; cz += tv*(a[2] + b[2] + c[2])/4;
+          const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+          fx += uy*vz - uz*vy; fy += uz*vx - ux*vz; fz += ux*vy - uy*vx;
+        }
+        if(f.nb >= 0 && f.nb !== i) links.push(i, f.nb, 0.5*Math.hypot(fx, fy, fz)/(2*f.d));
+      }
+      vol[i] = Math.max(0, V);
+      cen.push(V > 1e-12 ? [sx + cx/V, sy + cy/V, sz + cz/V] : [sx, sy, sz]);
+    }
+    return {vol, cen, links};
+  }
+
+  // Power weights that give every cell its target volume: semi-discrete
+  // optimal transport by damped Newton (Kitagawa–Mérigot–Thibert), the Newton
+  // step from conjugate gradients on the face-coupling matrix.
+  function solveWeights(seeds, target, w, tol){
+    const N = seeds.length, s0 = meanSpacing(N), minV = 1e-4*s0*s0*s0;
+    let pc = powerCells(seeds, w);
+    // Newton needs every cell non-empty to start; plain Voronoi always is.
+    if(pc.vol.some(v => v < minV)){ w.fill(0); pc = powerCells(seeds, w); }
+    const err = p => { let e = 0; for(let i = 0; i < N; i++) e += (p.vol[i] - target[i])**2; return Math.sqrt(e); };
+    const rel = p => { let e = 0; for(let i = 0; i < N; i++) e = Math.max(e, Math.abs(p.vol[i] - target[i])/target[i]); return e; };
+    let e0 = err(pc);
+    for(let it = 0; it < 40 && rel(pc) > tol; it++){
+      const L = pc.links, r = new Float64Array(N);
+      for(let i = 0; i < N; i++) r[i] = target[i] - pc.vol[i];
+      const Ax = x => { const y = new Float64Array(N); for(let k = 0; k < L.length; k += 3){ const i = L[k], j = L[k+1], c = L[k+2]; y[i] += c*(x[i] - x[j]); } for(let i = 0; i < N; i++) y[i] += 1e-9*x[i]; return y; };
+      const x = new Float64Array(N), res = r.slice(), p = r.slice();
+      let rr = 0; for(let i = 0; i < N; i++) rr += res[i]*res[i];
+      for(let k = 0; k < 200 && rr > 1e-20; k++){
+        const Ap = Ax(p); let pAp = 0; for(let i = 0; i < N; i++) pAp += p[i]*Ap[i];
+        if(pAp <= 0) break;
+        const al = rr/pAp; let rn = 0;
+        for(let i = 0; i < N; i++){ x[i] += al*p[i]; res[i] -= al*Ap[i]; rn += res[i]*res[i]; }
+        const be = rn/rr; rr = rn;
+        for(let i = 0; i < N; i++) p[i] = res[i] + be*p[i];
+      }
+      let a = 1, done = false;
+      for(let tries = 0; tries < 12 && !done; tries++, a *= 0.5){
+        const wt = w.map((v, i) => v + a*x[i]);
+        const pt = powerCells(seeds, wt), et = err(pt);
+        let ok = true; for(let i = 0; i < N; i++) if(pt.vol[i] < minV){ ok = false; break; }
+        if(ok && et < (1 - a/2)*e0 + 1e-12){ for(let i = 0; i < N; i++) w[i] = wt[i]; pc = pt; e0 = et; done = true; }
+      }
+      if(!done) break;
+    }
+    let m = 0; for(const v of w) m += v; m /= N;
+    for(let i = 0; i < N; i++) w[i] -= m;
+    return pc;   // cells for these weights (shifting all weights changes nothing)
+  }
+
+  // Two cell sizes: a share of the seeds get cells `ratio` times wider (by
+  // diameter; volume ratio³). Poisson-disk start, then rounds of exact weights
+  // + move each seed to its cell's centroid; weights solved last so the cell
+  // volumes are exact for the final positions.
+  function genBimodal(N, ratio, frac, regularity, rounds, rng){
+    const pts = genPoissonCount(N, regularity, rng, true).pts;
+    const order = pts.map((_, i) => i);
+    for(let i = N - 1; i > 0; i--){ const j = Math.floor(rng()*(i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; }
+    const nL = Math.round(frac*N), r3 = ratio*ratio*ratio;
+    const vS = DSIZE*DSIZE*DSIZE/(nL*r3 + (N - nL));
+    const target = new Float64Array(N);
+    for(let k = 0; k < N; k++) target[order[k]] = k < nL ? vS*r3 : vS;
+    const w = new Array(N).fill(0);
+    for(let r = 0; r <= rounds; r++){
+      const pc = solveWeights(pts, target, w, r === rounds ? 2e-3 : 2e-2);
+      if(r === rounds) break;
+      for(let i = 0; i < N; i++) pts[i] = pc.cen[i].map(wrap1);
+    }
+    return {pts, weights: w.map(v => parseFloat(v.toFixed(6)))};
+  }
+
+  // Symmetric seeds: Poisson-disk darts in one fundamental region, each kept
+  // only if its whole orbit clears the spacing. 'mirror' reflects in the
+  // x, y, z mid-planes (8 copies → orthotropic stiffness); 'cubic' adds every
+  // swap of axes (48 copies → cubic stiffness). Mirrors at 0 and the period
+  // put mirrors at ±5 too, so the tile stays periodic.
+  function orbit(p, cubic){
+    const out = [];
+    const perms = cubic ? [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]] : [[0,1,2]];
+    for(const pm of perms) for(let s = 0; s < 8; s++){
+      const q = [0, 1, 2].map(a => wrap1(((s >> a) & 1 ? -1 : 1)*p[pm[a]]));
+      if(!out.some(o => Math.abs(minImg(o[0]-q[0])) + Math.abs(minImg(o[1]-q[1])) + Math.abs(minImg(o[2]-q[2])) < 1e-9)) out.push(q);
+    }
+    return out;
+  }
+  // A seed relaxed to within `tol` of a mirror plane goes onto it, so it and its
+  // image merge into one seed instead of a near-duplicate pair (a sliver cell).
+  function snapToMirrors(p, cubic, tol){
+    let q = p.map(Math.abs);
+    if(cubic) q.sort((a, b) => b - a);
+    const snap = v => (v < tol ? 0 : (v > 5 - tol ? 5 : v));
+    q = q.map(snap);
+    if(cubic){
+      if(q[0] - q[1] < tol){ const m = (q[0] + q[1])/2; q[0] = q[1] = m; }
+      if(q[1] - q[2] < tol){ const m = (q[1] + q[2])/2; q[1] = q[2] = m; }
+      if(q[0] - q[1] < tol){ const m = (q[0] + q[1])/2; q[0] = q[1] = m; }
+    }
+    return q;
+  }
+  function genSymmetric(N, regularity, rounds, cubic, rng){
+    const gsize = cubic ? 48 : 8, reps = Math.max(1, Math.round(N/gsize));
+    const rmin = regularity*POISSON_SAT*meanSpacing(reps*gsize);
+    const GC = Math.max(1, Math.floor(DSIZE/rmin)), gcs = DSIZE/GC, grid = new Map();
+    const key = (x, y, z) => ((x + GC) % GC) + GC*(((y + GC) % GC) + GC*((z + GC) % GC));
+    const cIdx = v => Math.min(GC - 1, Math.floor((v - DMIN)/gcs));
+    const all = [], R = [];
+    const clear = q => {
+      const ix = cIdx(q[0]), iy = cIdx(q[1]), iz = cIdx(q[2]), rr = Math.ceil(rmin/gcs);
+      for(let a = -rr; a <= rr; a++) for(let b = -rr; b <= rr; b++) for(let c = -rr; c <= rr; c++){
+        const l = grid.get(key(ix + a, iy + b, iz + c)); if(!l) continue;
+        for(const o of l){ const dx = minImg(o[0]-q[0]), dy = minImg(o[1]-q[1]), dz = minImg(o[2]-q[2]); if(dx*dx + dy*dy + dz*dz < rcur*rcur) return false; }
+      }
+      return true;
+    };
+    let fails = 0, rcur = rmin;
+    while(R.length < reps){
+      if(fails >= 2000){   // the orbit won't fit at this spacing: loosen it and keep going
+        if(rcur < 0.25*rmin) break;
+        rcur *= 0.9; fails = 0;
+      }
+      const rc2 = rcur*rcur;
+      let x = rng()*5, y = rng()*5, z = rng()*5;
+      if(cubic){ const s = [x, y, z].sort((a, b) => b - a); x = s[0]; y = s[1]; z = s[2]; }
+      const orb = orbit([x, y, z], cubic);
+      let ok = orb.every(clear);
+      for(let i = 0; ok && i < orb.length; i++) for(let j = i + 1; j < orb.length; j++){
+        const dx = minImg(orb[i][0]-orb[j][0]), dy = minImg(orb[i][1]-orb[j][1]), dz = minImg(orb[i][2]-orb[j][2]);
+        if(dx*dx + dy*dy + dz*dz < rc2){ ok = false; break; }
+      }
+      if(!ok){ fails++; continue; }
+      fails = 0; R.push([x, y, z]);
+      for(const q of orb){ all.push(q); const k = key(cIdx(q[0]), cIdx(q[1]), cIdx(q[2])); if(!grid.has(k)) grid.set(k, []); grid.get(k).push(q); }
+    }
+    // Lloyd rounds on exact cells: a symmetric layout has symmetric centroids,
+    // so moving each representative and rebuilding its orbit keeps the symmetry.
+    let pts = all;
+    for(let r = 0; r < rounds; r++){
+      const idx = [];
+      pts = [];
+      for(let k = 0; k < R.length; k++){ const o = orbit(R[k], cubic); idx.push(pts.length); for(const q of o) pts.push(q); }
+      const pc = powerCells(pts, null);
+      for(let k = 0; k < R.length; k++) R[k] = snapToMirrors(pc.cen[idx[k]].map(wrap1), cubic, 0.2*rcur);
+      pts = [];
+      for(const rp of R) for(const q of orbit(rp, cubic)) pts.push(q);
+    }
+    return {pts, rmin: rcur};
+  }
+
+  // Extra lattices: FCC (rhombic dodecahedra, 4 per cube) and C15 Laves
+  // (MgCu₂ / Frank–Kasper: 16- and 12-faced cells, 24 per cube).
+  const FCC_BASIS = [[0, 0, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5, 0]];
+  const C15_BASIS = (function(){
+    const out = [];
+    for(const t of FCC_BASIS){
+      for(const a of [[0, 0, 0], [0.25, 0.25, 0.25]]) out.push(a.map((v, i) => (v + t[i]) % 1));
+      for(const b of [[0.625, 0.625, 0.625], [0.625, 0.875, 0.875], [0.875, 0.625, 0.875], [0.875, 0.875, 0.625]]) out.push(b.map((v, i) => (v + t[i]) % 1));
+    }
+    return out;
+  })();
+  // Disorder: Gaussian nudge of each lattice seed, σ = jitter × mean spacing.
+  function jitterSeeds(pts, jitter, rng){
+    if(!(jitter > 0)) return pts;
+    const sd = jitter*meanSpacing(pts.length);
+    const gauss = () => Math.sqrt(-2*Math.log(1 - rng()))*Math.cos(2*Math.PI*rng());
+    return pts.map(p => [wrap1(p[0] + sd*gauss()), wrap1(p[1] + sd*gauss()), wrap1(p[2] + sd*gauss())]);
+  }
+
+  const MODES = ['poisson', 'lloyd', 'random', 'weairePhelan', 'kelvin', 'bimodal', 'mirror', 'cubic', 'fcc', 'c15'];
+  const LATTICE_MODES = ['weairePhelan', 'kelvin', 'fcc', 'c15'];
 
   // One entry point. opts: {mode, count, regularity, lloydIter, rngSeed,
-  // periodic, maxSeeds}. Returns {seeds, minSpacing} (minSpacing 0 when the
-  // mode has no enforced gap). Output is capped at maxSeeds (default 1024).
+  // periodic, maxSeeds, sizeRatio, largeFraction, jitter}. Returns {seeds,
+  // minSpacing, weights} (minSpacing 0 when the mode has no enforced gap;
+  // weights only for 'bimodal'). Output is capped at maxSeeds (default 1024).
+  // v2 modes are periodic by construction; lattices with no jitter, and every
+  // v1 mode, give exactly the v1 layout.
   function generate(opts){
     const rng = mulberry32(opts.rngSeed | 0);
     const periodic = !!opts.periodic;
     const count = Math.max(1, opts.count | 0);
-    let seeds = [], minSpacing = 0;
+    let seeds = [], minSpacing = 0, weights = null;
     switch(opts.mode){
       case 'poisson': {
         const r = genPoissonCount(count, opts.regularity, rng, periodic);
@@ -756,14 +1095,29 @@ const FoamSeeds = (function(){
         break;
       }
       case 'random':       seeds = genRandom(count, rng); break;
-      case 'weairePhelan': seeds = genLattice(WP_BASIS, count); break;
-      case 'kelvin':       seeds = genLattice(KELVIN_BASIS, count); break;
+      case 'weairePhelan': seeds = jitterSeeds(genLattice(WP_BASIS, count), opts.jitter, rng); break;
+      case 'kelvin':       seeds = jitterSeeds(genLattice(KELVIN_BASIS, count), opts.jitter, rng); break;
+      case 'fcc':          seeds = jitterSeeds(genLattice(FCC_BASIS, count), opts.jitter, rng); break;
+      case 'c15':          seeds = jitterSeeds(genLattice(C15_BASIS, count), opts.jitter, rng); break;
+      case 'bimodal': {
+        const ratio = Math.min(4, Math.max(1, +opts.sizeRatio || 2));
+        const frac = Math.min(1, Math.max(0, opts.largeFraction != null ? +opts.largeFraction : 0.3));
+        const r = genBimodal(count, ratio, frac, opts.regularity != null ? opts.regularity : 0.9, opts.lloydIter != null ? opts.lloydIter | 0 : 3, rng);
+        seeds = r.pts; weights = r.weights;
+        break;
+      }
+      case 'mirror': case 'cubic': {
+        const r = genSymmetric(count, opts.regularity != null ? opts.regularity : 0.9, opts.lloydIter | 0, opts.mode === 'cubic', rng);
+        seeds = r.pts; minSpacing = r.rmin;
+        break;
+      }
       default: throw new Error('Unknown foam seed mode "' + opts.mode + '"');
     }
-    return {seeds: seeds.slice(0, opts.maxSeeds || 1024), minSpacing};
+    const cap = opts.maxSeeds || 1024;
+    return {seeds: seeds.slice(0, cap), minSpacing, weights: weights ? weights.slice(0, cap) : null};
   }
 
-  return {VERSION, MODES, LATTICE_MODES, meanSpacing, generate};
+  return {VERSION, MODES, LATTICE_MODES, meanSpacing, generate, powerCells};
 })();
 // ==== END FoamSeeds ===========================================================
 
@@ -774,18 +1128,23 @@ const FoamSeeds = (function(){
 // solid-fraction readout (v0.4.0) and, next, the stiffness estimate.
 function foamSeedsFromRecipe(json){
   const sd=json.seeds||{};
-  if(Array.isArray(sd.positions) && sd.positions.length>=12){
+  if(Array.isArray(sd.positions) && sd.positions.length>=3){
     const out=[];
     for(let i=0;i+2<sd.positions.length;i+=3) out.push([sd.positions[i],sd.positions[i+1],sd.positions[i+2]]);
+    if(Array.isArray(sd.weights)&&sd.weights.length===out.length) out.weights=sd.weights.slice();   // power cells (v2 field)
     return out;
   }
-  return FoamSeeds.generate({
+  const r=FoamSeeds.generate({
     mode: sd.mode, count: sd.count, regularity: sd.regularity!=null?sd.regularity:0.9,
-    lloydIter: sd.lloyd_iterations||0, rngSeed: sd.rng_seed||0, periodic: true
-  }).seeds;
+    lloydIter: sd.lloyd_iterations||0, rngSeed: sd.rng_seed||0, periodic: true,
+    sizeRatio: sd.size_ratio, largeFraction: sd.large_fraction, jitter: sd.jitter
+  });
+  if(r.weights) r.seeds.weights=r.weights;
+  return r.seeds;
 }
 
 function buildFoamSDF(json){
+  if(json.geometry&&json.geometry.field===2) return buildFoamSDF2(json);
   const seeds=foamSeedsFromRecipe(json);
   const N=seeds.length;
   const g=json.geometry||{};
@@ -866,21 +1225,329 @@ function buildFoamSDF(json){
     return base/Math.max(gm,0.05)-T-E;
   };
 }
+
+// ── FoamField/2 (F13LD.foam v0.6.0) — exact distance to the cell walls/edges ─
+// Recipes with geometry.field === 2 build here; every other recipe keeps the
+// field above unchanged. Cells are power (Laguerre) cells: seed i owns the
+// points where |p−sᵢ|²ₘ − wᵢ is smallest (wᵢ = seeds.weights, 0 if absent;
+// |·|ₘ is the stretched metric M = diag(1/stretch²)). For p in the cell of s₁,
+// each neighbour sⱼ gives a bisector plane at real-space distance
+//   cⱼ = (|p−sⱼ|²ₘ − wⱼ − |p−s₁|²ₘ + w₁) / (2|M(sⱼ−s₁)|)
+// and the members of the cell boundary are, exactly:
+//   wall  j  — the plane, nearest point inside the cell (else its edges)
+//   edge a,b — the line where two planes meet, inside the cell (else its ends)
+//   node     — a vertex where three planes meet, inside the cell
+// The 8 nearest seeds are searched over the seeds and their periodic copies.
+// Solid where < 0:
+//   closed : wall − t          open : edge − t          plateau : edge − t − E
+//   wet    : border − dist(p, cell shrunk by border) + 0.02·border
+//            (Plateau borders: the space left between rounded cells)
+// fillet k blends neighbouring walls / edges with a circular fillet of radius
+// k; node n adds a sphere of radius t + n at every vertex, blended the same way.
+// E (plateau swell) = k_p·(1 − smoothstep(0, 0.35, d₃ − d₁)), dᵢ = power distance.
+function buildFoamSDF2(json){
+  const seeds=foamSeedsFromRecipe(json);
+  const N=seeds.length;
+  const g=json.geometry||{};
+  const an=json.anisotropy||{};
+  const st=(an.enabled&&Array.isArray(an.stretch)&&an.stretch.length===3)?an.stretch.map(v=>(isFinite(v)&&v>0)?v:1):[1,1,1];
+  const mx=1/(st[0]*st[0]), my=1/(st[1]*st[1]), mz=1/(st[2]*st[2]);
+  const mode=['open','closed','plateau','wet'].includes(g.mode)?g.mode:'plateau';
+  const T=(typeof g.thickness==='number'&&g.thickness>0)?g.thickness:0.08;
+  const Kp=(mode==='plateau'&&typeof g.plateau_k==='number')?g.plateau_k:0;
+  const FK=(mode!=='wet'&&typeof g.fillet==='number'&&g.fillet>0)?g.fillet:0;
+  const NR=(mode!=='wet'&&typeof g.node==='number'&&g.node>0)?g.node:0;
+  const BR=(typeof g.border==='number'&&g.border>0)?g.border:0.3;
+  const L=10, H=5, K=8;
+  // Weights → a non-negative offset per seed (wmax − wᵢ), which leaves the
+  // cells unchanged and keeps every power distance ≥ the metric distance.
+  const W=seeds.weights;
+  let wmax=0;
+  if(W) for(let i=0;i<N;i++) wmax=Math.max(wmax,W[i]||0);
+  const off=i=>W?wmax-(W[i]||0):0;
+
+  // Seeds plus every periodic copy within `pad` of the tile, binned on a
+  // plain (non-wrapping) grid over the padded box.
+  const s0=FoamSeeds.meanSpacing(N), smax=Math.max(st[0],st[1],st[2]);
+  const pad=Math.min(L,3*s0*smax+Math.sqrt(wmax-(W?Math.min(...W):0))), B=H+pad;
+  const PX=[], PY=[], PZ=[], PO=[];
+  for(let a=-1;a<=1;a++) for(let b=-1;b<=1;b++) for(let c=-1;c<=1;c++)
+    for(let i=0;i<N;i++){
+      const x=seeds[i][0]+a*L, y=seeds[i][1]+b*L, z=seeds[i][2]+c*L;
+      if(x>=-B&&x<=B&&y>=-B&&y<=B&&z>=-B&&z<=B){PX.push(x);PY.push(y);PZ.push(z);PO.push(off(i));}
+    }
+  const M=PX.length;
+  const G=Math.max(1,Math.min(48,Math.round(2*B/s0))), cs=2*B/G, nC=G*G*G;
+  const cI=v=>Math.min(G-1,Math.max(0,Math.floor((v+B)/cs)));
+  const cellOf=new Int32Array(M), start=new Int32Array(nC+1);
+  for(let i=0;i<M;i++){const c=cI(PX[i])+G*(cI(PY[i])+G*cI(PZ[i]));cellOf[i]=c;start[c+1]++;}
+  for(let c=0;c<nC;c++) start[c+1]+=start[c];
+  const fill=start.slice(0,nC), SX=new Float64Array(M), SY=new Float64Array(M), SZ=new Float64Array(M), SO=new Float64Array(M);
+  for(let i=0;i<M;i++){const k=fill[cellOf[i]]++;SX[k]=PX[i];SY[k]=PY[i];SZ[k]=PZ[i];SO[k]=PO[i];}
+  const rm=cs/smax;   // metric radius a ring of R cells is guaranteed to cover, per R
+
+  // 8 nearest by power distance (+ offset): value + real displacement p − s.
+  const D=new Float64Array(K), VX=new Float64Array(K), VY=new Float64Array(K), VZ=new Float64Array(K);
+  function consider(k,px,py,pz){
+    const vx=px-SX[k], vy=py-SY[k], vz=pz-SZ[k];
+    const d=vx*vx*mx+vy*vy*my+vz*vz*mz+SO[k];
+    if(d>=D[K-1]) return;
+    let j=K-1;
+    while(j>0&&D[j-1]>d){D[j]=D[j-1];VX[j]=VX[j-1];VY[j]=VY[j-1];VZ[j]=VZ[j-1];j--;}
+    D[j]=d;VX[j]=vx;VY[j]=vy;VZ[j]=vz;
+  }
+  function nearestK(px,py,pz){
+    const c0=cI(px), c1=cI(py), c2=cI(pz);
+    D.fill(Infinity);
+    for(let R=0;R<G;R++){   // add the shell of cells at ring R
+      for(let a=-R;a<=R;a++){const qx=c0+a; if(qx<0||qx>=G) continue;
+        for(let b=-R;b<=R;b++){const qy=c1+b; if(qy<0||qy>=G) continue;
+          const side=a===-R||a===R||b===-R||b===R, de=(side||R===0)?1:2*R;
+          for(let e=-R;e<=R;e+=de){const qz=c2+e; if(qz<0||qz>=G) continue;
+            const c=qx+G*(qy+G*qz);
+            for(let k=start[c];k<start[c+1];k++) consider(k,px,py,pz);
+          }}}
+      if(Math.sqrt(D[K-1])<=R*rm) return;   // offsets ≥ 0, so later seeds can't be nearer
+    }
+  }
+
+  // Cell planes in a frame centred on p: inside where n·x ≤ c (c ≥ 0 = distance).
+  const NX=new Float64Array(K), NY=new Float64Array(K), NZ=new Float64Array(K), C=new Float64Array(K), ord=new Int32Array(K);
+  function planes(shift){
+    for(let j=1;j<K;j++){
+      const ax=(VX[0]-VX[j])*mx, ay=(VY[0]-VY[j])*my, az=(VZ[0]-VZ[j])*mz;
+      const l=Math.sqrt(ax*ax+ay*ay+az*az)||1e-12;
+      NX[j]=ax/l; NY[j]=ay/l; NZ[j]=az/l; C[j]=(D[j]-D[0])/(2*l)-shift;
+    }
+  }
+  function inside(x,y,z,s0,s1,s2){
+    for(let j=1;j<K;j++){
+      if(j===s0||j===s1||j===s2) continue;
+      if(NX[j]*x+NY[j]*y+NZ[j]*z>C[j]+1e-9) return false;
+    }
+    return true;
+  }
+  function sortPlanes(){
+    for(let j=1;j<K;j++) ord[j]=j;
+    for(let i=2;i<K;i++){const v=ord[i];let j=i;while(j>1&&C[ord[j-1]]>C[v]){ord[j]=ord[j-1];j--;}ord[j]=v;}
+  }
+  // Point where planes a, b, c meet (x,y,z into VT), false if they don't.
+  const VT=[0,0,0];
+  function vertexAt(a,b,c){
+    const bx=NY[b]*NZ[c]-NZ[b]*NY[c], by=NZ[b]*NX[c]-NX[b]*NZ[c], bz=NX[b]*NY[c]-NY[b]*NX[c];
+    const det=NX[a]*bx+NY[a]*by+NZ[a]*bz;
+    if(Math.abs(det)<1e-12) return false;
+    const cx=NY[c]*NZ[a]-NZ[c]*NY[a], cy=NZ[c]*NX[a]-NX[c]*NZ[a], cz=NX[c]*NY[a]-NY[c]*NX[a];
+    const ax=NY[a]*NZ[b]-NZ[a]*NY[b], ay=NZ[a]*NX[b]-NX[a]*NZ[b], az=NX[a]*NY[b]-NY[a]*NX[b];
+    VT[0]=(C[a]*bx+C[b]*cx+C[c]*ax)/det; VT[1]=(C[a]*by+C[b]*cy+C[c]*ay)/det; VT[2]=(C[a]*bz+C[b]*cz+C[c]*az)/det;
+    return true;
+  }
+  function vertexDist(a,b,c){
+    return vertexAt(a,b,c)&&inside(VT[0],VT[1],VT[2],a,b,c)?Math.sqrt(VT[0]*VT[0]+VT[1]*VT[1]+VT[2]*VT[2]):Infinity;
+  }
+  // Nearest point of the line where planes a, b meet: squared distance, or
+  // −1 when that point lies outside the cell (then the edge ends nearer).
+  function lineDist2(a,b){
+    const cab=NX[a]*NX[b]+NY[a]*NY[b]+NZ[a]*NZ[b], det=1-cab*cab;
+    if(det<1e-12) return -1;
+    const al=(C[a]-C[b]*cab)/det, be=(C[b]-C[a]*cab)/det;
+    return inside(al*NX[a]+be*NX[b],al*NY[a]+be*NY[b],al*NZ[a]+be*NZ[b],a,b,-1)?Math.max(0,al*C[a]+be*C[b]):-1;
+  }
+  function wallDist(){let m=Infinity;for(let j=1;j<K;j++) if(C[j]<m) m=C[j];return m;}
+  // Planes sorted by distance prune the search: a line on planes a, b is at
+  // least max(c_a, c_b) away, a vertex at least the largest of its three.
+  function strutDist(cap){
+    sortPlanes();
+    let best=cap;
+    for(let ib=2;ib<K;ib++){const b=ord[ib]; if(C[b]>=best) break;
+      for(let ia=1;ia<ib;ia++){const d2=lineDist2(ord[ia],b); if(d2>=0&&d2<best*best) best=Math.sqrt(d2);}}
+    for(let ic=3;ic<K;ic++){const c=ord[ic]; if(C[c]>=best) break;
+      for(let ib=2;ib<ic;ib++) for(let ia=1;ia<ib;ia++){const v=vertexDist(ord[ia],ord[ib],c); if(v<best) best=v;}}
+    return best;
+  }
+  // Every member within `lim`: edge (or wall) distances and vertex distances,
+  // then folded with the circular smooth minimum.
+  const ED=new Float64Array(K*K), VD=[], MEM=[];
+  function members(lim, walls){
+    sortPlanes();
+    ED.fill(Infinity); VD.length=0;
+    for(let ic=3;ic<K;ic++){const c=ord[ic]; if(C[c]>=lim) break;
+      for(let ib=2;ib<ic;ib++) for(let ia=1;ia<ib;ia++){
+        const a=ord[ia], b=ord[ib], v=vertexDist(a,b,c);
+        if(v===Infinity) continue;
+        VD.push(v);
+        const ab=a*K+b, ac=a*K+c, bc=b*K+c, ba=b*K+a, ca=c*K+a, cb=c*K+b;
+        if(v<ED[ab]){ED[ab]=v;ED[ba]=v;} if(v<ED[ac]){ED[ac]=v;ED[ca]=v;} if(v<ED[bc]){ED[bc]=v;ED[cb]=v;}
+      }}
+    for(let ib=2;ib<K;ib++){const b=ord[ib]; if(C[b]>=lim) break;
+      for(let ia=1;ia<ib;ia++){const a=ord[ia], d2=lineDist2(a,b);
+        if(d2>=0){const d=Math.sqrt(d2);ED[a*K+b]=d;ED[b*K+a]=d;}}}
+    MEM.length=0;
+    if(walls){
+      for(let j=1;j<K;j++){
+        if(C[j]>=lim) continue;
+        let d=inside(C[j]*NX[j],C[j]*NY[j],C[j]*NZ[j],j,-1,-1)?C[j]:Infinity;
+        if(d===Infinity) for(let i=1;i<K;i++) if(i!==j&&ED[i*K+j]<d) d=ED[i*K+j];
+        if(d<Infinity) MEM.push(d);
+      }
+    } else {
+      for(let a=1;a<K;a++) for(let b=a+1;b<K;b++) if(ED[a*K+b]<Infinity) MEM.push(ED[a*K+b]);
+    }
+    if(NR>0) for(const v of VD) MEM.push(v-NR);
+    return MEM;
+  }
+  // Circular smooth minimum, folded over ascending values: each pair meets in a
+  // circular fillet of radius k; values more than k above the running minimum
+  // change nothing.
+  function smin(list,k){
+    list.sort((a,b)=>a-b);
+    let m=list.length?list[0]:Infinity;
+    if(k<=0) return m;
+    for(let i=1;i<list.length&&list[i]<m+k;i++){
+      const h=Math.max(k-Math.abs(m-list[i]),0)/k;
+      m=Math.min(m,list[i])-k*0.5*(1+h-Math.sqrt(1-h*(h-2)));
+    }
+    return m;
+  }
+  // Wet: distance from p to the cell shrunk by the border radius (0 inside it),
+  // over its faces, edges and vertices.
+  function shrunkDist(){
+    let out=false;
+    for(let j=1;j<K;j++) if(C[j]<0){out=true;break;}
+    if(!out) return 0;
+    let best=Infinity;
+    for(let j=1;j<K;j++){
+      const d=Math.abs(C[j]);
+      if(d<best&&inside(C[j]*NX[j],C[j]*NY[j],C[j]*NZ[j],j,-1,-1)) best=d;
+    }
+    for(let a=1;a<K;a++) for(let b=a+1;b<K;b++){
+      const d2=lineDist2(a,b); if(d2>=0&&d2<best*best) best=Math.sqrt(d2);
+    }
+    for(let a=1;a<K;a++) for(let b=a+1;b<K;b++) for(let c=b+1;c<K;c++){
+      const v=vertexDist(a,b,c); if(v<best) best=v;
+    }
+    return best;
+  }
+  const smooth=(e0,e1,x)=>{const t=Math.min(1,Math.max(0,(x-e0)/(e1-e0)));return t*t*(3-2*t);};
+  // Far from the foam only the sign matters: past `cap` the distance is
+  // clamped, which keeps it a safe under-estimate (still 1-Lipschitz).
+  const cap=2+Kp+FK+NR;   // not tied to thickness, so field + t is thickness-free (lab threshold sweeps)
+
+  return p=>{
+    const px=((p[0]+H)%L+L)%L-H, py=((p[1]+H)%L+L)%L-H, pz=((p[2]+H)%L+L)%L-H;
+    nearestK(px,py,pz);
+    if(mode==='wet'){
+      planes(BR);
+      return BR-Math.min(shrunkDist(),BR+1)+0.02*BR;
+    }
+    planes(0);
+    let E=0;
+    if(Kp>0) E=Kp*(1-smooth(0,0.35,Math.sqrt(D[2])-Math.sqrt(D[0])));
+    const walls=mode==='closed';
+    let base;
+    if(FK>0||NR>0){
+      const m0=walls?wallDist():strutDist(cap);
+      base=m0<cap?smin(members(m0+FK+NR+1e-9,walls),FK):cap;
+      base=Math.min(base,cap);
+    } else base=walls?wallDist():strutDist(cap);
+    return base-T-E;
+  };
+}
 // ==== END foam field ==========================================================
 
-function regenerateSeeds(){
-  const r = FoamSeeds.generate({
+// Seed settings for FoamSeeds.generate.
+function seedOpts(){
+  return {
     mode: state.seedMode, count: state.count, regularity: state.regularity,
     lloydIter: state.lloydIter, rngSeed: state.rngSeed, periodic: state.periodic,
+    sizeRatio: state.sizeRatio, largeFraction: state.largeFraction, jitter: state.jitter,
     maxSeeds: MAX_BAKE_SEEDS
-  });
+  };
+}
+function applySeeds(r){
   state.seeds = r.seeds;
+  state.weights = r.weights || null;
   state.minSpacing = r.minSpacing;
   state.actualCount = state.seeds.length;
   updateSeedReadouts();
   updateMMHints();
   updateEq();
+  scheduleSk();
 }
+function regenerateSeeds(){ applySeeds(FoamSeeds.generate(seedOpts())); }
+
+// The two-size mix and the symmetric modes compute exact cells for every
+// seed many times over (0.1–3 s for 8–500 cells), so they run in a worker
+// to keep the page responsive. Only the latest request is kept.
+const HEAVY_SEED_MODES = ['bimodal', 'mirror', 'cubic'];
+let _seedWorker = null, _seedReq = 0, _seedPending = false;
+function seedWorker(){
+  if(_seedWorker) return _seedWorker;
+  const src = Array.prototype.map.call(document.querySelectorAll('script:not([src])'), s => s.textContent).join('\n');
+  const a = src.indexOf('// ==== BEGIN FoamSeeds'), b = src.indexOf('// ==== END FoamSeeds');
+  const code = src.slice(a, b) + '\nself.onmessage = e => { let r; try { r = FoamSeeds.generate(e.data.opts); r.id = e.data.id; } catch(err){ r = {id: e.data.id, error: String(err && err.message || err)}; } self.postMessage(r); };';
+  _seedWorker = new Worker(URL.createObjectURL(new Blob([code], {type: 'application/javascript'})));
+  _seedWorker.onmessage = e => {
+    const r = e.data;
+    if(r.id !== _seedReq) return;            // a newer request is on its way
+    _seedPending = false;
+    if(r.error){ setBadge('seed generation failed: ' + r.error, true); return; }
+    applySeeds(r);
+    scheduleBake();
+  };
+  return _seedWorker;
+}
+// ── Structure factor S(k) of the seeds ──────────────────────────────────────
+// S(k) = |Σ exp(i k·sⱼ)|² / N over the cube's own wave vectors k = 2πn/10,
+// averaged in shells of |n|. 1 = uncorrelated (Poisson); a dip toward 0 at the
+// smallest k means large-scale density fluctuations are suppressed
+// (hyperuniform) — what long Lloyd relaxation produces.
+let skTimer = null;
+function scheduleSk(){ if(skTimer) clearTimeout(skTimer); skTimer = setTimeout(drawSk, 200); }
+function computeSk(seeds){
+  const N = seeds.length;
+  if(N < 2) return null;
+  const nmax = Math.min(14, Math.max(4, Math.ceil(2.4 * Math.cbrt(N))));
+  const k0 = 2 * Math.PI / DOMAIN_SIZE, sum = new Float64Array(nmax + 1), cnt = new Int32Array(nmax + 1);
+  const X = seeds.map(p => p[0]), Y = seeds.map(p => p[1]), Z = seeds.map(p => p[2]);
+  for(let nx = 0; nx <= nmax; nx++) for(let ny = -nmax; ny <= nmax; ny++) for(let nz = -nmax; nz <= nmax; nz++){
+    if(nx === 0 && (ny < 0 || (ny === 0 && nz <= 0))) continue;   // half of k-space (S is even)
+    const r = Math.sqrt(nx*nx + ny*ny + nz*nz), b = Math.round(r);
+    if(b > nmax) continue;
+    let c = 0, sn = 0;
+    for(let j = 0; j < N; j++){ const a = k0 * (nx*X[j] + ny*Y[j] + nz*Z[j]); c += Math.cos(a); sn += Math.sin(a); }
+    sum[b] += (c*c + sn*sn) / N; cnt[b]++;
+  }
+  const out = [], s0 = meanSpacing(N);
+  for(let b = 1; b <= nmax; b++) if(cnt[b]) out.push([b * s0 / DOMAIN_SIZE, sum[b] / cnt[b]]);   // x = k·s₀/2π
+  return out;
+}
+function drawSk(){
+  skTimer = null;
+  const cv = $('skCanvas'), pts = state.periodic ? computeSk(state.seeds) : null;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), W = cv.clientWidth, H = cv.clientHeight;
+  if(!W) return;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const css = getComputedStyle(document.documentElement), dim = css.getPropertyValue('--dim').trim() || '#888',
+        acc = css.getPropertyValue('--accent').trim() || '#E8D4A2', brd = css.getPropertyValue('--border').trim() || '#2a2a3a';
+  ctx.font = '10px "IBM Plex Mono", monospace'; ctx.fillStyle = dim;
+  if(!pts){ $('skNote').textContent = state.periodic ? '' : 'periodic seeds only'; return; }
+  const xmax = 2.4, ymax = Math.min(3, Math.max(2, ...pts.map(p => p[1]))), L = 26, R = 6, T = 6, B = 16;
+  const px = x => L + (W - L - R) * Math.min(x, xmax) / xmax, py = y => T + (H - T - B) * (1 - Math.min(y, ymax) / ymax);
+  ctx.strokeStyle = brd; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(L, T); ctx.lineTo(L, H - B); ctx.lineTo(W - R, H - B); ctx.stroke();
+  ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(L, py(1)); ctx.lineTo(W - R, py(1)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillText('1', 12, py(1) + 3); ctx.fillText('0', 12, H - B + 3);
+  ctx.fillText('k·s₀/2π', W - R - 48, H - 3); ctx.fillText('1', px(1) - 3, H - 3); ctx.fillText('2', px(2) - 3, H - 3);
+  ctx.strokeStyle = acc; ctx.lineWidth = 1.5; ctx.beginPath();
+  pts.forEach((p, i) => { if(p[0] > xmax) return; i ? ctx.lineTo(px(p[0]), py(p[1])) : ctx.moveTo(px(p[0]), py(p[1])); });
+  ctx.stroke();
+  ctx.fillStyle = acc; pts.forEach(p => { if(p[0] <= xmax){ ctx.beginPath(); ctx.arc(px(p[0]), py(p[1]), 1.8, 0, 2 * Math.PI); ctx.fill(); } });
+  const low = pts.filter(p => p[0] < 0.5), lowS = low.length ? low.reduce((a, p) => a + p[1], 0) / low.length : NaN;
+  $('skNote').textContent = isFinite(lowS) ? 'S at long wavelengths ' + lowS.toFixed(2) + (lowS < 0.1 ? ' · hyperuniform-like' : lowS < 0.5 ? ' · suppressed' : '') : '';
+}
+window.addEventListener('resize', scheduleSk);
 
 function updateSeedReadouts(){
   $('vsCount').textContent = state.actualCount !== state.count
@@ -894,16 +1561,24 @@ let regenTimer = null;
 function scheduleRegen(){
   if(regenTimer) clearTimeout(regenTimer);
   setBadge('generating seeds …');
-  regenTimer = setTimeout(() => { regenTimer = null; regenerateSeeds(); scheduleBake(); }, 60);
+  regenTimer = setTimeout(() => {
+    regenTimer = null;
+    if(HEAVY_SEED_MODES.includes(state.seedMode) && typeof Worker !== 'undefined'){
+      try { seedWorker().postMessage({id: ++_seedReq, opts: seedOpts()}); _seedPending = true; return; } catch(err){ /* fall back to this thread */ }
+    }
+    regenerateSeeds(); scheduleBake();
+  }, 60);
 }
 
 // ============================================================================
-// BAKE — 4 nearest-seed distances per voxel into an RGBA16F 3D texture.
-// Seeds are binned into a uniform grid (cell edge ≈ mean spacing × stretch on
-// each axis) so each voxel checks only nearby seeds: ring 1 (27 cells), then
-// ring 2 (125) if needed, then all seeds — each step is taken only when the
-// 4th-nearest distance can't yet be proven final, so the result is exact.
-// Anisotropy is baked into the metric; the live shader samples raw positions.
+// BAKE — exact foam distances per voxel into an RGBA16F 3D texture (v0.6.0)
+//   r = distance to the nearest cell wall   g = distance to the nearest cell edge
+//   b = d₃ − d₁                              a = d₄ − d₁   (metric, for plateau / organic)
+// The same construction as buildFoamSDF2: the 8 nearest seeds, searched over
+// the seeds plus their periodic copies (binned on a plain grid over the padded
+// box), give the cell's bisector planes; walls are the nearest plane, edges the
+// nearest line / vertex where planes meet inside the cell. Thickness, plateau k
+// and organic stay live in the shader — only seeds and stretch need a re-bake.
 // ============================================================================
 const MAX_BAKE_SEEDS = 1024;
 const TEX_W = 1024;            // width of the 2D lookup textures
@@ -961,74 +1636,214 @@ precision highp float;
 precision highp int;
 precision highp sampler2D;
 out vec4 fragColor;
-uniform sampler2D uSeeds;   // seeds sorted by grid cell (xyz)
+uniform sampler2D uSeeds;   // seeds + periodic copies, sorted by grid cell (xyz, power offset)
 uniform sampler2D uCells;   // per grid cell: (first index, count)
-uniform int uSeedCount;
 uniform int uRes;
 uniform float uZ;
-uniform vec3 uAnisoInv;
+uniform vec3 uMetric;       // 1 / stretch²
 uniform float uHalf;
-uniform float uPeriodic;
-uniform ivec3 uGrid;
-uniform vec3 uCell;
-uniform float uRm;          // proven-exact radius per ring, in metric units
-uniform int uMaxRing;
-uniform int uMaxPerCell;
+uniform int uGrid;          // cells per axis over the padded box [-uBox, uBox]³
+uniform float uBox;
+uniform float uCell;
+uniform float uRm;          // metric radius covered per ring
+uniform float uFillet;      // circular blend radius
+uniform float uNode;        // extra node-sphere radius
+uniform float uBorder;      // wet: Plateau border radius
+uniform int uWet;
+#define K 8
+float Dk[K];
+vec3 Vk[K];
+vec3 Nn[K];
+float Cc[K];
+int ord[K];
+float ED[K * K];
+float MEM[64];
+int nMem;
 
-vec3 seedAt(int i){ return texelFetch(uSeeds, ivec2(i % ${TEX_W}, i / ${TEX_W}), 0).xyz; }
+vec4 seedAt(int i){ return texelFetch(uSeeds, ivec2(i % ${TEX_W}, i / ${TEX_W}), 0); }
 
-float metric2(vec3 p, vec3 s, float L){
-  vec3 r = p - s;
-  if(uPeriodic > 0.5) r -= L * floor(r / L + 0.5);   // shortest periodic image
-  r *= uAnisoInv;
-  return dot(r, r);
+void consider(vec3 p, vec4 s){
+  vec3 v = p - s.xyz;
+  float d = dot(v * v, uMetric) + s.w;
+  if(d >= Dk[K - 1]) return;
+  for(int j = K - 1; j > 0; j--){
+    if(Dk[j - 1] > d){ Dk[j] = Dk[j - 1]; Vk[j] = Vk[j - 1]; }
+    else { Dk[j] = d; Vk[j] = v; return; }
+  }
+  Dk[0] = d; Vk[0] = v;
 }
-void push(float d, inout vec4 D){
-  if(d < D.x)      D = vec4(d, D.x, D.y, D.z);
-  else if(d < D.y) D = vec4(D.x, d, D.y, D.z);
-  else if(d < D.z){ D.w = D.z; D.z = d; }
-  else if(d < D.w) D.w = d;
+void planes(float shift){
+  for(int j = 1; j < K; j++){
+    vec3 a = (Vk[0] - Vk[j]) * uMetric;
+    float l = max(length(a), 1e-12);
+    Nn[j] = a / l; Cc[j] = (Dk[j] - Dk[0]) / (2.0 * l) - shift;
+  }
+}
+bool inside(vec3 x, int s0, int s1, int s2){
+  for(int j = 1; j < K; j++){
+    if(j == s0 || j == s1 || j == s2) continue;
+    if(dot(Nn[j], x) > Cc[j] + 1e-6) return false;
+  }
+  return true;
+}
+void sortPlanes(){
+  for(int j = 0; j < K; j++) ord[j] = j;
+  for(int i = 2; i < K; i++){
+    int v = ord[i]; int j = i;
+    for(int q = 0; q < K; q++){ if(j <= 1 || Cc[ord[j - 1]] <= Cc[v]) break; ord[j] = ord[j - 1]; j--; }
+    ord[j] = v;
+  }
+}
+float vertexDist(int a, int b, int c){
+  vec3 bc = cross(Nn[b], Nn[c]), ca = cross(Nn[c], Nn[a]), ab = cross(Nn[a], Nn[b]);
+  float det = dot(Nn[a], bc);
+  if(abs(det) < 1e-6) return 1e9;   // near-degenerate in single precision
+  vec3 x = (Cc[a] * bc + Cc[b] * ca + Cc[c] * ab) / det;
+  float d = length(x);
+  // A vertex can't be nearer than any of its planes; single precision can
+  // break that in degenerate (symmetric) layouts, so such a result is rejected.
+  if(d < max(abs(Cc[a]), max(abs(Cc[b]), abs(Cc[c]))) - 1e-3) return 1e9;
+  return inside(x, a, b, c) ? d : 1e9;
+}
+// squared distance to the line where planes a, b meet, or -1 if that point is outside the cell
+float lineDist2(int a, int b){
+  float cab = dot(Nn[a], Nn[b]), det = 1.0 - cab * cab;
+  if(det < 1e-6) return -1.0;   // near-parallel in single precision
+  float al = (Cc[a] - Cc[b] * cab) / det, be = (Cc[b] - Cc[a] * cab) / det;
+  vec3 x = al * Nn[a] + be * Nn[b];
+  float d2 = dot(x, x), lo = max(abs(Cc[a]), abs(Cc[b])) - 1e-3;
+  // the line can't be nearer than either of its planes (see vertexDist)
+  if(lo > 0.0 && d2 < lo * lo) return -1.0;
+  return inside(x, a, b, -1) ? d2 : -1.0;
+}
+float strutDist(float cap){
+  sortPlanes();
+  float best = cap;
+  for(int ib = 2; ib < K; ib++){
+    int b = ord[ib]; if(Cc[b] >= best) break;
+    for(int ia = 1; ia < ib; ia++){ float d2 = lineDist2(ord[ia], b); if(d2 >= 0.0 && d2 < best * best) best = sqrt(d2); }
+  }
+  for(int ic = 3; ic < K; ic++){
+    int c = ord[ic]; if(Cc[c] >= best) break;
+    for(int ib = 2; ib < ic; ib++) for(int ia = 1; ia < ib; ia++) best = min(best, vertexDist(ord[ia], ord[ib], c));
+  }
+  return best;
+}
+void addMem(float v){
+  if(nMem >= 64) return;
+  int j = nMem;
+  for(int q = 0; q < 64; q++){ if(j == 0 || MEM[j - 1] <= v) break; MEM[j] = MEM[j - 1]; j--; }
+  MEM[j] = v; nMem++;
+}
+float sminMem(float k){
+  if(nMem == 0) return 1e9;
+  float m = MEM[0];
+  for(int i = 1; i < 64; i++){
+    if(i >= nMem || MEM[i] >= m + k) break;
+    float h = max(k - abs(m - MEM[i]), 0.0) / k;
+    m = min(m, MEM[i]) - k * 0.5 * (1.0 + h - sqrt(1.0 - h * (h - 2.0)));
+  }
+  return m;
+}
+// Fillet / node: every edge (or wall) and node within lim, folded with the
+// circular smooth minimum — the same construction as buildFoamSDF2.
+float filleted(float lim, bool walls){
+  sortPlanes();
+  for(int i = 0; i < K * K; i++) ED[i] = 1e9;
+  nMem = 0;
+  for(int ic = 3; ic < K; ic++){
+    int c = ord[ic]; if(Cc[c] >= lim) break;
+    for(int ib = 2; ib < ic; ib++) for(int ia = 1; ia < ib; ia++){
+      int a = ord[ia], b = ord[ib];
+      float v = vertexDist(a, b, c);
+      if(v >= 1e8) continue;
+      if(uNode > 0.0) addMem(v - uNode);
+      ED[a*K+b] = min(ED[a*K+b], v); ED[b*K+a] = ED[a*K+b];
+      ED[a*K+c] = min(ED[a*K+c], v); ED[c*K+a] = ED[a*K+c];
+      ED[b*K+c] = min(ED[b*K+c], v); ED[c*K+b] = ED[b*K+c];
+    }
+  }
+  for(int ib = 2; ib < K; ib++){
+    int b = ord[ib]; if(Cc[b] >= lim) break;
+    for(int ia = 1; ia < ib; ia++){
+      int a = ord[ia]; float d2 = lineDist2(a, b);
+      if(d2 >= 0.0){ ED[a*K+b] = sqrt(d2); ED[b*K+a] = ED[a*K+b]; }
+    }
+  }
+  if(walls){
+    for(int j = 1; j < K; j++){
+      if(Cc[j] >= lim) continue;
+      float d = inside(Cc[j] * Nn[j], j, -1, -1) ? Cc[j] : 1e9;
+      if(d >= 1e8) for(int i = 1; i < K; i++) if(i != j) d = min(d, ED[i*K+j]);
+      if(d < 1e8) addMem(d);
+    }
+  } else {
+    for(int a = 1; a < K; a++) for(int b = a + 1; b < K; b++) if(ED[a*K+b] < 1e8) addMem(ED[a*K+b]);
+  }
+  return sminMem(uFillet);
+}
+// Wet: distance from p to its cell shrunk by the border (0 inside it).
+float shrunkDist(){
+  bool outside = false;
+  for(int j = 1; j < K; j++) if(Cc[j] < 0.0) outside = true;
+  if(!outside) return 0.0;
+  float best = 1e9;
+  for(int j = 1; j < K; j++){
+    float d = abs(Cc[j]);
+    if(d < best && inside(Cc[j] * Nn[j], j, -1, -1)) best = d;
+  }
+  for(int a = 1; a < K; a++) for(int b = a + 1; b < K; b++){
+    float d2 = lineDist2(a, b); if(d2 >= 0.0 && d2 < best * best) best = sqrt(d2);
+  }
+  for(int a = 1; a < K; a++) for(int b = a + 1; b < K; b++) for(int c = b + 1; c < K; c++) best = min(best, vertexDist(a, b, c));
+  return best;
 }
 
 void main(){
   float L = 2.0 * uHalf;
   vec3 p = vec3(gl_FragCoord.x / float(uRes), gl_FragCoord.y / float(uRes), (uZ + 0.5) / float(uRes));
   p = (p - 0.5) * L;
-  vec4 D = vec4(1e18);
-  bool exact = false;
-  ivec3 c = clamp(ivec3(floor((p + uHalf) / uCell)), ivec3(0), uGrid - 1);
-  for(int R = 1; R <= 2; R++){
-    if(R > uMaxRing) break;
-    D = vec4(1e18);
-    for(int dz = -R; dz <= R; dz++)
-    for(int dy = -R; dy <= R; dy++)
-    for(int dx = -R; dx <= R; dx++){
-      ivec3 q = c + ivec3(dx, dy, dz);
-      if(uPeriodic > 0.5) q = (q + 2 * uGrid) % uGrid;
-      else if(any(lessThan(q, ivec3(0))) || any(greaterThanEqual(q, uGrid))) continue;
-      int ci = q.x + uGrid.x * (q.y + uGrid.y * q.z);
-      vec2 sc = texelFetch(uCells, ivec2(ci % ${TEX_W}, ci / ${TEX_W}), 0).xy;
-      int st = int(sc.x), cnt = int(sc.y);
-      for(int j = 0; j < ${MAX_BAKE_SEEDS}; j++){
-        if(j >= cnt || j >= uMaxPerCell) break;
-        push(metric2(p, seedAt(st + j), L), D);
+  for(int j = 0; j < K; j++){ Dk[j] = 1e30; Vk[j] = vec3(1e14); }
+  ivec3 c0 = clamp(ivec3(floor((p + uBox) / uCell)), ivec3(0), ivec3(uGrid - 1));
+  for(int R = 0; R < uGrid; R++){
+    for(int a = -R; a <= R; a++){
+      int qx = c0.x + a; if(qx < 0 || qx >= uGrid) continue;
+      for(int b = -R; b <= R; b++){
+        int qy = c0.y + b; if(qy < 0 || qy >= uGrid) continue;
+        bool side = (a == -R || a == R || b == -R || b == R);
+        int de = (side || R == 0) ? 1 : 2 * R;
+        for(int e = -R; e <= R; e += de){
+          int qz = c0.z + e; if(qz < 0 || qz >= uGrid) continue;
+          int ci = qx + uGrid * (qy + uGrid * qz);
+          vec2 sc = texelFetch(uCells, ivec2(ci % ${TEX_W}, ci / ${TEX_W}), 0).xy;
+          int st = int(sc.x), cnt = int(sc.y);
+          for(int k = 0; k < cnt; k++) consider(p, seedAt(st + k));
+        }
       }
     }
-    if(sqrt(D.w) <= float(R) * uRm){ exact = true; break; }
+    if(sqrt(Dk[K - 1]) <= float(R) * uRm) break;
   }
-  if(!exact){
-    D = vec4(1e18);
-    for(int i = 0; i < ${MAX_BAKE_SEEDS}; i++){
-      if(i >= uSeedCount) break;
-      push(metric2(p, seedAt(i), L), D);
-    }
+  float d31 = sqrt(Dk[2]) - sqrt(Dk[0]);
+  if(uWet == 1){
+    planes(uBorder);
+    float g = uBorder - min(shrunkDist(), uBorder + 1.0) + 0.02 * uBorder;
+    fragColor = vec4(1e3, g, d31, 0.0);
+    return;
   }
-  // d1..d3 drive the foam field; d4 localises the organic bulge to vertices.
-  fragColor = sqrt(D);
+  planes(0.0);
+  float wall = 1e9;
+  for(int j = 1; j < K; j++) wall = min(wall, Cc[j]);
+  float cap = 4.0 + uFillet + uNode;
+  float strut = strutDist(cap);
+  if(uFillet > 0.0 || uNode > 0.0){
+    wall = min(filleted(wall + uFillet + uNode + 1e-6, true), cap);
+    if(strut < cap) strut = min(filleted(strut + uFillet + uNode + 1e-6, false), cap);
+  }
+  fragColor = vec4(wall, strut, d31, 0.0);
 }`;
   bakeProg = linkProgram(VERT, frag);
   if(!bakeProg){ bakeError = 'bake shader failed to compile — see console'; return; }
-  ['uSeeds','uCells','uSeedCount','uRes','uZ','uAnisoInv','uHalf','uPeriodic','uGrid','uCell','uRm','uMaxRing','uMaxPerCell']
+  ['uSeeds','uCells','uRes','uZ','uMetric','uHalf','uGrid','uBox','uCell','uRm','uFillet','uNode','uBorder','uWet']
     .forEach(n => bakeU[n] = gl.getUniformLocation(bakeProg, n));
   bakeFBO = gl.createFramebuffer();
   seedTex = gl.createTexture();
@@ -1048,42 +1863,48 @@ function upload2D(tex, internal, format, data, count, comps){
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 }
 
-// Bin seeds into the bake grid and upload both lookup textures.
+// Seeds (plus, when periodic, every copy within `pad` of the cube — the same
+// padding buildFoamSDF2 uses) binned on a plain grid; upload both lookup textures.
 function uploadSeedsBinned(a){
-  const seeds = state.seeds, N = seeds.length;
-  const s0 = meanSpacing(N);
-  const G = [0, 1, 2].map(i => Math.max(1, Math.min(40, Math.round(DOMAIN_SIZE / (s0 * a[i])))));
-  const cs = G.map(g => DOMAIN_SIZE / g);
-  const idx = (v, i) => Math.min(G[i] - 1, Math.max(0, Math.floor((v - DOMAIN_MIN) / cs[i])));
-  const nCells = G[0] * G[1] * G[2];
-  const cellOf = new Int32Array(N), counts = new Int32Array(nCells);
-  for(let s = 0; s < N; s++){
-    const c = idx(seeds[s][0], 0) + G[0] * (idx(seeds[s][1], 1) + G[1] * idx(seeds[s][2], 2));
+  const seeds = state.seeds, N = seeds.length, L = DOMAIN_SIZE, H = DOMAIN_HALF;
+  const s0 = meanSpacing(N), smax = Math.max(a[0], a[1], a[2]);
+  const wr = state.weights ? Math.max(...state.weights) - Math.min(...state.weights) : 0;
+  const pad = state.periodic ? Math.min(L, 3 * s0 * smax + Math.sqrt(wr)) : 0, B = H + pad;
+  // Power-cell weights become a non-negative offset per seed (wmax − wᵢ), as
+  // in buildFoamSDF2; it rides in the seed texture's 4th channel.
+  const W = state.weights;
+  const wmax = W ? Math.max(...W) : 0;
+  const pts = [], offs = [];
+  const span = state.periodic ? 1 : 0;
+  for(let i = -span; i <= span; i++) for(let j = -span; j <= span; j++) for(let k = -span; k <= span; k++)
+    seeds.forEach((sp, n) => {
+      const x = sp[0] + i * L, y = sp[1] + j * L, z = sp[2] + k * L;
+      if(x >= -B && x <= B && y >= -B && y <= B && z >= -B && z <= B){ pts.push(x, y, z); offs.push(W ? wmax - W[n] : 0); }
+    });
+  const M = pts.length / 3;
+  const G = Math.max(1, Math.min(48, Math.round(2 * B / s0))), cs = 2 * B / G, nCells = G * G * G;
+  const idx = v => Math.min(G - 1, Math.max(0, Math.floor((v + B) / cs)));
+  const cellOf = new Int32Array(M), counts = new Int32Array(nCells);
+  for(let s = 0; s < M; s++){
+    const c = idx(pts[3*s]) + G * (idx(pts[3*s + 1]) + G * idx(pts[3*s + 2]));
     cellOf[s] = c; counts[c]++;
   }
   const start = new Int32Array(nCells);
-  let maxPer = 0;
   for(let c = 1; c < nCells; c++) start[c] = start[c - 1] + counts[c - 1];
-  for(let c = 0; c < nCells; c++) maxPer = Math.max(maxPer, counts[c]);
   const fill = start.slice();
-  const sorted = new Float32Array(N * 4);
-  for(let s = 0; s < N; s++){
+  const sorted = new Float32Array(M * 4);
+  for(let s = 0; s < M; s++){
     const k = fill[cellOf[s]]++;
-    sorted[k*4] = seeds[s][0]; sorted[k*4 + 1] = seeds[s][1]; sorted[k*4 + 2] = seeds[s][2];
+    sorted[k*4] = pts[3*s]; sorted[k*4 + 1] = pts[3*s + 1]; sorted[k*4 + 2] = pts[3*s + 2]; sorted[k*4 + 3] = offs[s];
   }
   const cellData = new Float32Array(nCells * 2);
   for(let c = 0; c < nCells; c++){ cellData[c*2] = start[c]; cellData[c*2 + 1] = counts[c]; }
 
   gl.activeTexture(gl.TEXTURE0);
-  upload2D(seedTex, gl.RGBA32F, gl.RGBA, sorted, N, 4);
+  upload2D(seedTex, gl.RGBA32F, gl.RGBA, sorted, M, 4);
   gl.activeTexture(gl.TEXTURE1);
   upload2D(cellTex, gl.RG32F, gl.RG, cellData, nCells, 2);
-
-  // Ring R is exact when the 4th-nearest metric distance ≤ R·min(cs/a).
-  // Periodic grids need 2R+1 ≤ G on every axis or the ring would revisit cells.
-  const minG = Math.min(G[0], G[1], G[2]);
-  const maxRing = state.periodic ? Math.min(2, Math.floor((minG - 1) / 2)) : 2;
-  return {G, cs, maxPer, maxRing, rm: Math.min(cs[0] / a[0], cs[1] / a[1], cs[2] / a[2])};
+  return {G, B, cs, rm: cs / smax};
 }
 
 function ensureFieldTexture(res){
@@ -1107,7 +1928,9 @@ function ensureFieldTexture(res){
 function runBake(){
   bakeTimer = null;
   if(!bakeAvailable){ setBadge(bakeError || 'bake unavailable', true); return; }
-  if(state.seeds.length < 4){ setBadge('need at least 4 seeds', true); return; }
+  if(state.seeds.length < 1){ setBadge('no seeds', true); return; }
+  // New seeds are on their way from the worker; it bakes when they land.
+  if(_seedPending){ setBadge('generating seeds …'); return; }
   const t0 = performance.now();
   const res = QUALITY_TIERS[currentQuality].bake;
   const a = state.aniso ? [state.anisoX, state.anisoY, state.anisoZ] : [1, 1, 1];
@@ -1124,16 +1947,18 @@ function runBake(){
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, cellTex);
   gl.uniform1i(bakeU.uSeeds, 0);
   gl.uniform1i(bakeU.uCells, 1);
-  gl.uniform1i(bakeU.uSeedCount, state.seeds.length);
   gl.uniform1i(bakeU.uRes, res);
   gl.uniform1f(bakeU.uHalf, DOMAIN_HALF);
-  gl.uniform3f(bakeU.uAnisoInv, 1 / a[0], 1 / a[1], 1 / a[2]);
-  gl.uniform1f(bakeU.uPeriodic, state.periodic ? 1 : 0);
-  gl.uniform3i(bakeU.uGrid, grid.G[0], grid.G[1], grid.G[2]);
-  gl.uniform3f(bakeU.uCell, grid.cs[0], grid.cs[1], grid.cs[2]);
+  gl.uniform3f(bakeU.uMetric, 1 / (a[0] * a[0]), 1 / (a[1] * a[1]), 1 / (a[2] * a[2]));
+  gl.uniform1i(bakeU.uGrid, grid.G);
+  gl.uniform1f(bakeU.uBox, grid.B);
+  gl.uniform1f(bakeU.uCell, grid.cs);
   gl.uniform1f(bakeU.uRm, grid.rm);
-  gl.uniform1i(bakeU.uMaxRing, grid.maxRing);
-  gl.uniform1i(bakeU.uMaxPerCell, grid.maxPer);
+  const wet = state.topology === 'wet';
+  gl.uniform1f(bakeU.uFillet, wet ? 0 : state.fillet);
+  gl.uniform1f(bakeU.uNode, wet ? 0 : state.node);
+  gl.uniform1f(bakeU.uBorder, state.border);
+  gl.uniform1i(bakeU.uWet, wet ? 1 : 0);
   bindQuad(bakeProg);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, bakeFBO);
@@ -1178,67 +2003,47 @@ function toFloat(v){
   return s.includes('.') || s.includes('e') ? s : s + '.0';
 }
 
-// ── Field definition ────────────────────────────────────────────────────────
-// base = distance-like value that is 0 on the cell boundaries the foam lives on
-//        closed: (d2 − d1)/2 → 0 on faces (2 cells)   open/plateau: (d3 − d1)/2 → 0 on edges (3+ cells)
-// E    = extra material ≥ 0 (plateau junction swell, organic vertex bulge)
-// surface field (solid where < 0):
-//   normalize on : base / |∇base| − t − E   (base / |∇base| ≈ true perpendicular distance → uniform 2t walls)
-//   normalize off: base − t − E             (raw level set; walls swell toward cell corners)
+// ── Field definition (v0.6.0, FoamField/2) ───────────────────────────────────
+// base = exact distance to the nearest cell wall (closed) or cell edge
+//        (open / plateau), with fillet and nodes blended in, baked per voxel;
+//        wet: the finished Plateau-border field, baked
+// E    = plateau junction swell ≥ 0, from d₃ − d₁ (channel b)
+// surface field (solid where < 0):  base − t − E   (wet: base)
+// Walls are 2t thick and struts 2t across everywhere, in real space, with or
+// without stretch — no gradient correction needed.
 function baseExpr(){
-  return state.topology === 'closed' ? '(d2 - d1) * 0.5' : '(d3 - d1) * 0.5';
-}
-function organicConsts(){
-  return {amp: state.organic * 2.0, reach: 0.10 + Math.pow(state.organic, 0.6) * 0.25};
+  return state.topology === 'closed' ? 'd.x' : 'd.y';
 }
 function extraExpr(){
-  const parts = [];
   if(state.topology === 'plateau')
-    parts.push(toFloat(state.plateauK) + ' * (1.0 - smoothstep(0.0, 0.35, d3 - d1))');
-  // Organic uses (d4 − d1), small only at Voronoi vertices (4+ cells), so the
-  // struts keep their base thickness and only the nodes inflate.
-  if(state.organic > 0){
-    const o = organicConsts();
-    parts.push(toFloat(o.amp) + ' * ' + toFloat(state.thickness) + ' * pow(1.0 - smoothstep(0.0, ' + toFloat(o.reach) + ', d4 - d1), 1.4)');
-  }
-  return parts.length ? parts.join(' + ') : '0.0';
+    return toFloat(state.plateauK) + ' * (1.0 - smoothstep(0.0, 0.35, d.z))';
+  return '0.0';
 }
+// Smallest feature for raymarch thresholds: strut radius, or for wet foam a
+// fraction of the border radius (its struts are thinner than the border).
+function featureT(){ return state.topology === 'wet' ? Math.max(0.3 * state.border, 0.02) : state.thickness; }
 
 // ── Safe marching constants ─────────────────────────────────────────────────
-// Every dᵢ changes by at most m per unit moved (m = largest 1/stretch, ≥ 1 used),
-// so base changes by ≤ m. The solid always lies inside {base < M·(t + E)} with
-// M = max(1, m) (normalize only shrinks it, since |∇base| ≤ m). So
-//   (base − M·(t + E)) / (M·(1 + L_E))
-// is a guaranteed-safe step distance: the ray can jump that far without
-// skipping any foam. L_E bounds how fast the extras change. The 0.8 covers
+// base is a true distance (changes by at most 1 per unit moved), so the solid
+// always lies inside {base < t + E} and
+//   (base − (t + E)) / (1 + L_E)
+// is a guaranteed-safe step: the ray can jump that far without skipping any
+// foam. L_E bounds how fast the extras change; they use metric distances,
+// which change by at most m = largest 1/stretch per unit moved. The 0.8 covers
 // trilinear texture interpolation and half-float rounding.
 function marchConsts(){
   const m = state.aniso ? Math.max(1 / state.anisoX, 1 / state.anisoY, 1 / state.anisoZ) : 1;
-  const M = Math.max(1, m);
   let LE = 0;
   if(state.topology === 'plateau') LE += state.plateauK * (1.5 / 0.35) * 2 * m;
-  if(state.organic > 0){
-    const o = organicConsts();
-    LE += o.amp * state.thickness * 1.4 * (1.5 / o.reach) * 2 * m;
-  }
-  return {M, invLip: 0.8 / (M * (1 + LE))};
+  return {M: 1, invLip: 0.8 / (1 + LE)};
 }
 
 function buildFrag(){
   const steps = QUALITY_TIERS[currentQuality].steps;
   const T = toFloat(state.thickness);
-  // Gradient stencil is tied to thickness, not voxel size: a stencil wider than
-  // the strut radius straddles the strut axis (where base has a crease), under-
-  // reads |∇base| and shaves the struts — differently at each bake resolution.
-  // Half the thickness keeps every sample on one side of the crease; trilinear
-  // filtering keeps sub-voxel differences meaningful (floor = ¼ voxel).
-  const surface = state.normalize ? `
-  float e = max(${toFloat(0.5 * state.thickness)}, uVoxelSize * 0.25);
-  float gx = baseAt(p + vec3(e,0,0)) - baseAt(p - vec3(e,0,0));
-  float gy = baseAt(p + vec3(0,e,0)) - baseAt(p - vec3(0,e,0));
-  float gz = baseAt(p + vec3(0,0,e)) - baseAt(p - vec3(0,0,e));
-  float g = sqrt(gx*gx + gy*gy + gz*gz) / (2.0 * e);
-  return b / max(g, 0.05) - ${T} - E;` : `
+  const wet = state.topology === 'wet';
+  const surface = wet ? `
+  return b;` : `
   return b - ${T} - E;`;
 
   return `#version 300 es
@@ -1269,16 +2074,11 @@ vec4 sampleD(vec3 p){
   return texture(uField, uvw);
 }
 
+// d = (wall distance, edge distance, d₃ − d₁, d₄ − d₁) — see BAKE
 void terms(vec3 p, out float base, out float E){
   vec4 d = sampleD(p);
-  float d1 = d.x, d2 = d.y, d3 = d.z, d4 = d.w;
   base = ${baseExpr()};
   E = ${extraExpr()};
-}
-float baseAt(vec3 p){
-  vec4 d = sampleD(p);
-  float d1 = d.x, d2 = d.y, d3 = d.z;
-  return ${baseExpr()};
 }
 
 // Surface field — negative inside the foam.
@@ -1290,7 +2090,7 @@ float foamField(vec3 p){
 float foamMarch(vec3 p){
   float b, E;
   terms(p, b, E);
-  return (b - uMarchM * (${T} + E)) * uInvLip;
+  return (b - uMarchM * (${wet ? '0.0' : T} + E)) * uInvLip;
 }
 
 float boxSDF(vec3 p, float H){
@@ -1338,7 +2138,7 @@ void main(){
   vec3 bgCol = mix(vec3(0.07), vec3(0.03), r*r);
   vec4 bg = vec4(bgCol, 1.0);
 
-  float featureSize = max(${T}, 0.04);
+  float featureSize = max(${toFloat(featureT())}, 0.04);
   float camScale = clamp(zoom / (16.0 * uTile), 0.15, 1.0);
   float thresh = featureSize * 0.010 * camScale;
   float fineStep = featureSize * 0.30 * camScale;   // cap for steps right at the surface
@@ -1657,31 +2457,41 @@ function setHint(id, text){
 }
 function updateMMHints(){
   const f = mmFactor();
-  if(!f){ ['vsCount_mm', 'vsThick_mm', 'vsSpacing_mm'].forEach(id => setHint(id, '')); return; }
+  if(!f){ ['vsCount_mm', 'vsThick_mm', 'vsSpacing_mm', 'vsFillet_mm', 'vsNode_mm', 'vsBorder_mm'].forEach(id => setHint(id, '')); return; }
   setHint('vsCount_mm', 'cube ' + (DOMAIN_SIZE * f).toFixed(2) + ' mm');
-  // The surface sits at distance t from the wall mid-plane / strut axis on both
-  // sides, so the full wall (or strut diameter) is 2t. Exact with normalize on
-  // (the gradient is taken in real space, so this holds with anisotropy too);
-  // approximate (~) with it off, where walls swell toward cell corners.
-  const approx = state.normalize ? '' : '~';
+  // The surface sits at exact distance t from the wall mid-plane / strut axis
+  // on both sides (real space, with or without stretch), so the full wall or
+  // strut diameter is 2t.
   const what = state.topology === 'closed' ? 'wall ' : 'strut Ø ';
-  setHint('vsThick_mm', what + approx + (2 * state.thickness * f).toFixed(3) + ' mm');
+  setHint('vsThick_mm', what + (2 * state.thickness * f).toFixed(3) + ' mm');
   setHint('vsSpacing_mm', state.minSpacing > 0 ? 'min gap ' + (state.minSpacing * f).toFixed(2) + ' mm' : '');
+  setHint('vsFillet_mm', state.fillet > 0 ? 'R ' + (state.fillet * f).toFixed(3) + ' mm' : '');
+  setHint('vsNode_mm', state.node > 0 ? 'node Ø ' + (2 * (state.thickness + state.node) * f).toFixed(3) + ' mm' : '');
+  setHint('vsBorder_mm', 'R ' + (state.border * f).toFixed(3) + ' mm');
 }
 
 function updateEq(){
   const bar = $('eqbar');
-  const t = '<b>' + state.thickness.toFixed(2) + '</b>';
-  let e = state.topology === 'closed' ? '(d₂ − d₁)/2' : '(d₃ − d₁)/2';
-  if(state.normalize) e = e + ' ÷ ‖∇‖';
-  e = e + ' − ' + t;
-  if(state.topology === 'plateau') e = e + ' − <b>' + state.plateauK.toFixed(2) + '</b>·(1 − smoothstep(0, 0.35, d₃ − d₁))';
-  if(state.organic > 0) e = e + ' − <b>' + (2 * state.organic).toFixed(2) + '</b>·t·bulge(d₄ − d₁)';
+  const t = '<b>' + state.thickness.toFixed(2) + '</b>', wet = state.topology === 'wet';
+  const blend = !wet && (state.fillet > 0 || state.node > 0);
+  const term = state.topology === 'closed' ? 'wall' : 'edge';
+  let e, what;
+  if(wet){
+    const r = '<b>' + state.border.toFixed(2) + '</b>';
+    e = 'dist(p, cell shrunk by ' + r + ') &gt; ' + r;
+    what = 'wet foam: the material left between cells rounded by the border radius (Plateau borders)';
+  } else {
+    e = (blend ? 'smin<sub>' + state.fillet.toFixed(2) + '</sub>(' + term + 's' + (state.node > 0 ? ', nodes − <b>' + state.node.toFixed(2) + '</b>' : '') + ')' : term + '(p)') + ' − ' + t;
+    if(state.topology === 'plateau') e = e + ' − <b>' + state.plateauK.toFixed(2) + '</b>·(1 − smoothstep(0, 0.35, d₃ − d₁))';
+    e = e + ' &lt; 0';
+    what = term + '(p) = exact distance to the nearest cell ' + term + (blend ? '; smin = circular fillet between neighbouring ' + term + 's' + (state.node > 0 ? ' and node spheres' : '') : '');
+  }
+  if(state.weights) what += ' · power (Laguerre) cells, exact volumes';
   const metric = state.aniso
-    ? 'dᵢ = i-th nearest seed, measured as ‖(p − s) ÷ (' + [state.anisoX, state.anisoY, state.anisoZ].map(v => v.toFixed(2)).join(', ') + ')‖'
-    : 'dᵢ = distance to the i-th nearest seed';
-  const notes = [metric, state.actualCount + ' seeds', state.periodic ? 'periodic' : 'bounded'];
-  bar.innerHTML = e + ' &lt; 0<br><span class="eq-note">' + notes.join(' · ') +
+    ? 'cells measured as ‖(p − s) ÷ (' + [state.anisoX, state.anisoY, state.anisoZ].map(v => v.toFixed(2)).join(', ') + ')‖'
+    : (state.topology === 'plateau' ? 'dᵢ = distance to the i-th nearest seed' : '');
+  const notes = [what, metric, state.actualCount + ' seeds', state.periodic ? 'periodic' : 'bounded'].filter(Boolean);
+  bar.innerHTML = e + '<br><span class="eq-note">' + notes.join(' · ') +
     ' · <span id="eqVf" style="opacity:' + (lastVf ? 0.45 : 1) + '" title="Solid volume fraction of the cube, sampled on a 48³ grid with the exact field F13LD.mesh exports and F13LD.lab homogenizes">' +
     (lastVf ? lastVf : 'solid …') + '</span></span>';
   scheduleSolidFraction();
@@ -1700,7 +2510,7 @@ function scheduleSolidFraction(){
 }
 function updateSolidFraction(){
   vfTimer = null;
-  if(state.seeds.length < 4) return;
+  if(state.seeds.length < 1) return;
   let sdf;
   try { sdf = buildFoamSDF(buildExportJSON()); } catch(err){ return; }
   const n = VF_RES, step = DOMAIN_SIZE / n, p = [0, 0, 0];
@@ -1741,8 +2551,40 @@ const shaderChange = () => { rebuildShader(); updateMMHints(); };
 
 bindRange('sThick', 'thickness', f2, shaderChange);
 bindRange('sPlateauK', 'plateauK', f2, shaderChange);
-bindRange('sOrganic', 'organic', f2, shaderChange);
-bindRange('sCount', 'count', fi, scheduleRegen);
+// Fillet, node and border change the baked distances, so they re-bake.
+const bakeChange = () => { scheduleBake(); updateEq(); updateMMHints(); };
+bindRange('sFillet', 'fillet', f2, bakeChange);
+bindRange('sNode', 'node', f2, bakeChange);
+bindRange('sBorder', 'border', f2, () => { scheduleBake(); shaderChange(); updateEq(); });
+bindRange('sRatio', 'sizeRatio', f2, scheduleRegen);
+bindRange('sLarge', 'largeFraction', f2, scheduleRegen);
+bindRange('sJitter', 'jitter', f2, () => { syncSeedModeUI(); scheduleRegen(); });
+// Cell count: log-scaled slider (fine steps at low counts), 8–500 for
+// stochastic seeds; lattices go down to a single repeating cube.
+const COUNT_MAX = 500;
+// one lattice cube: Kelvin 2 seeds, FCC 4, Weaire–Phelan 8, C15 24
+function countMin(){ return {kelvin: 2, fcc: 4, weairePhelan: 8, c15: 24}[state.seedMode] || 8; }
+function posToCount(pos){
+  const lo = Math.log(countMin()), hi = Math.log(COUNT_MAX);
+  return Math.round(Math.exp(lo + (hi - lo) * pos / 1000));
+}
+function countToPos(n){
+  const lo = Math.log(countMin()), hi = Math.log(COUNT_MAX);
+  return Math.round(1000 * (Math.log(Math.min(COUNT_MAX, Math.max(countMin(), n))) - lo) / (hi - lo));
+}
+function syncCountSlider(){
+  state.count = Math.min(COUNT_MAX, Math.max(countMin(), state.count));
+  $('sCount').value = countToPos(state.count);
+  $('vsCount').textContent = String(state.count);
+}
+syncCountSlider();
+$('sCount').addEventListener('input', function(){
+  const n = posToCount(parseFloat(this.value));
+  if(n === state.count) return;
+  state.count = n;
+  $('vsCount').textContent = String(n);
+  scheduleRegen(); onDesignChange();
+});
 bindRange('sSpacing', 'regularity', f2, scheduleRegen);
 bindRange('sLloyd', 'lloydIter', fi, scheduleRegen);
 const anisoChange = () => { scheduleBake(); updateEq(); updateMMHints(); };
@@ -1752,11 +2594,21 @@ bindRange('sAnisoZ', 'anisoZ', f2, anisoChange);
 
 document.querySelectorAll('.mode-btn[data-topo]').forEach(btn => btn.addEventListener('click', () => {
   document.querySelectorAll('.mode-btn[data-topo]').forEach(b => b.classList.toggle('active', b === btn));
+  const wasWet = state.topology === 'wet';
   state.topology = btn.dataset.topo;
-  $('grp-plateauK').classList.toggle('hidden', state.topology !== 'plateau');
+  syncTopologyUI();
+  if(wasWet !== (state.topology === 'wet')) scheduleBake();   // the wet field is baked
   shaderChange(); onDesignChange();
 }));
-$('grp-plateauK').classList.toggle('hidden', state.topology !== 'plateau');
+function syncTopologyUI(){
+  const wet = state.topology === 'wet';
+  $('grp-plateauK').classList.toggle('hidden', state.topology !== 'plateau');
+  $('grp-thick').classList.toggle('hidden', wet);
+  $('grp-border').classList.toggle('hidden', !wet);
+  $('grp-fillet').classList.toggle('hidden', wet);
+  $('grp-node').classList.toggle('hidden', wet);
+}
+syncTopologyUI();
 
 document.querySelectorAll('#qualityOverlay .ovl-btn').forEach(btn => btn.addEventListener('click', () => {
   document.querySelectorAll('#qualityOverlay .ovl-btn').forEach(b => b.classList.toggle('active', b === btn));
@@ -1766,12 +2618,6 @@ document.querySelectorAll('#qualityOverlay .ovl-btn').forEach(btn => btn.addEven
 }));
 
 function setToggle(el, on, text){ el.classList.toggle('on', on); el.textContent = text; }
-
-$('normToggle').addEventListener('click', function(){
-  state.normalize = !state.normalize;
-  setToggle(this, state.normalize, 'normalize: ' + (state.normalize ? 'on' : 'off'));
-  shaderChange(); onDesignChange();
-});
 
 $('anisoToggle').addEventListener('click', function(){
   state.aniso = !state.aniso;
@@ -1791,17 +2637,26 @@ $('meshWarnClose').addEventListener('click', hideMeshWarning);
 
 function syncSeedModeUI(){
   const m = state.seedMode, lattice = LATTICE_MODES.includes(m);
-  $('grp-spacing').classList.toggle('hidden', !(m === 'poisson' || m === 'lloyd'));
-  $('grp-lloyd').classList.toggle('hidden', m !== 'lloyd');
-  $('grp-rng').classList.toggle('hidden', lattice);   // lattices never change with the RNG
+  $('grp-spacing').classList.toggle('hidden', !['poisson', 'lloyd', 'bimodal', 'mirror', 'cubic'].includes(m));
+  $('grp-lloyd').classList.toggle('hidden', !['lloyd', 'bimodal', 'mirror', 'cubic'].includes(m));
+  $('grp-ratio').classList.toggle('hidden', m !== 'bimodal');
+  $('grp-large').classList.toggle('hidden', m !== 'bimodal');
+  $('grp-jitter').classList.toggle('hidden', !lattice);
+  $('grp-rng').classList.toggle('hidden', lattice && !(state.jitter > 0));   // a lattice only uses the RNG for disorder
+  // Exact-cell relaxation (two-size, symmetric) costs a full cell build per round.
+  const sl = $('sLloyd'), cap = m === 'lloyd' ? 60 : 12;
+  sl.max = cap;
+  if(state.lloydIter > cap){ state.lloydIter = cap; sl.value = cap; $('vsLloyd').textContent = String(cap); }
 }
 $('seedMode').addEventListener('change', function(){
-  const wasLattice = LATTICE_MODES.includes(state.seedMode);
+  const wasLattice = LATTICE_MODES.includes(state.seedMode), prevMode = state.seedMode;
   state.seedMode = this.value;
-  // Lattices are periodic by nature: switch periodic on when entering one
-  // (still user-overridable afterwards).
-  if(LATTICE_MODES.includes(state.seedMode) && !wasLattice) setPeriodic(true);
+  // Lattices, the two-size mix and the symmetric modes are periodic by
+  // construction: switch periodic on when entering one (still overridable).
+  const periodicByNature = m => LATTICE_MODES.includes(m) || HEAVY_SEED_MODES.includes(m);
+  if(periodicByNature(state.seedMode) && !(wasLattice || HEAVY_SEED_MODES.includes(prevMode))) setPeriodic(true);
   syncSeedModeUI();
+  syncCountSlider();
   scheduleRegen(); onDesignChange();
 });
 
@@ -1855,7 +2710,8 @@ $('cellSizeMM').addEventListener('input', function(){
 // exactly what the preview shows. The generator settings stay alongside, so
 // mesh can regenerate the same seeds if positions are ever missing.
 // ============================================================================
-const SEED_MODE_LABELS = {poisson: 'Poisson-disk', lloyd: 'Lloyd-relaxed', random: 'uniform random', weairePhelan: 'Weaire–Phelan', kelvin: 'Kelvin'};
+const SEED_MODE_LABELS = {poisson: 'Poisson-disk', lloyd: 'Lloyd-relaxed', random: 'uniform random', bimodal: 'two-size mix', mirror: 'mirror-symmetric', cubic: 'cubic-symmetric',
+  weairePhelan: 'Weaire–Phelan', kelvin: 'Kelvin', fcc: 'FCC', c15: 'C15 Laves'};
 function buildExportJSON(){
   const positions = [];
   for(const sp of state.seeds) positions.push(+sp[0].toFixed(4), +sp[1].toFixed(4), +sp[2].toFixed(4));
@@ -1864,7 +2720,7 @@ function buildExportJSON(){
     family: 'foam',
     meta: {
       tool: 'f13ld.foam',
-      version: '0.5.0',
+      version: '0.6.0',
       timestamp: new Date().toISOString(),
       preset: SEED_MODE_LABELS[state.seedMode] + ' · ' + state.topology
     },
@@ -1879,10 +2735,15 @@ function buildExportJSON(){
       count_actual: state.actualCount,
       regularity: (state.seedMode === 'poisson' || state.seedMode === 'lloyd') ? state.regularity : null,
       min_spacing: state.minSpacing > 0 ? parseFloat(state.minSpacing.toFixed(6)) : null,
-      lloyd_iterations: state.seedMode === 'lloyd' ? state.lloydIter : null,
-      rng_seed: LATTICE_MODES.includes(state.seedMode) ? null : state.rngSeed,
+      lloyd_iterations: ['lloyd', 'bimodal', 'mirror', 'cubic'].includes(state.seedMode) ? state.lloydIter : null,
+      size_ratio: state.seedMode === 'bimodal' ? state.sizeRatio : null,
+      large_fraction: state.seedMode === 'bimodal' ? state.largeFraction : null,
+      jitter: LATTICE_MODES.includes(state.seedMode) ? state.jitter : null,
+      rng_seed: LATTICE_MODES.includes(state.seedMode) && !(state.jitter > 0) ? null : state.rngSeed,
       generator: 'FoamSeeds/' + FoamSeeds.VERSION,
-      positions: positions
+      positions: positions,
+      // power-cell weights (two-size mix): cell i owns |p − sᵢ|² − wᵢ smallest
+      weights: state.weights ? state.weights.map(v => +v.toFixed(6)) : undefined
     },
     anisotropy: {
       enabled: state.aniso,
@@ -1892,8 +2753,14 @@ function buildExportJSON(){
       mode: state.topology,
       thickness: state.thickness,
       plateau_k: state.topology === 'plateau' ? state.plateauK : null,
-      organic: state.organic,
-      normalize: state.normalize,
+      organic: 0,
+      fillet: state.topology === 'wet' ? 0 : state.fillet,
+      node: state.topology === 'wet' ? 0 : state.node,
+      border: state.topology === 'wet' ? state.border : null,
+      normalize: true,
+      // v0.6.0 — exact distance field (buildFoamSDF2); recipes without it build
+      // with the original field in F13LD.mesh / F13LD.lab.
+      field: 2,
       // Edge of the repeating cube in mm at the cell size set here; F13LD.mesh
       // uses it as its default cell size. null when no cell size is set.
       tile_mm: f ? parseFloat((DOMAIN_SIZE * f).toFixed(4)) : null
@@ -2068,7 +2935,7 @@ async function sampleSolidFractions(jsons, N){
 }
 
 // ── The estimate (pure function of the design + measured ρ) ──────────────────
-// in: { topo, rho, rhoNoSwell, seedMode, regularity, plateauK, organic, normalize,
+// in: { topo, rho, rhoNoSwell, seedMode, regularity, plateauK, organic, normalize, field,
 //       stretch:[x,y,z], cells, periodic, Es (GPa), nuS }
 function foamEstimate(inp){
   const C = FOAM_CAL, closed = inp.topo === 'closed', L = closed ? C.closed : C.open, rho = inp.rho;
@@ -2085,8 +2952,8 @@ function foamEstimate(inp){
     rel *= L.poisson;
     if(inp.seedMode === 'random'){ uncal.push('uniform-random seeds (Poisson-disk factor used)'); sd.extra += 0.08; }
     else if(Math.abs(inp.regularity - 0.9) > 0.05){ notes.push('Poisson regularity ' + inp.regularity.toFixed(2) + ' (calibrated at 0.90)'); sd.extra += 0.03; }
-  } else if(inp.seedMode === 'kelvin' || inp.seedMode === 'weairePhelan'){
-    uncal.push((inp.seedMode === 'kelvin' ? 'Kelvin' : 'Weaire–Phelan') + ' lattice — ordered foams are not calibrated (disordered law used)');
+  } else if(LATTICE_MODES.includes(inp.seedMode)){
+    uncal.push(SEED_MODE_LABELS[inp.seedMode] + ' lattice — ordered foams are not calibrated (disordered law used)');
     sd.extra += 0.25;
   }
   // plateau borders: factor while the swell adds mass at this thickness
@@ -2100,7 +2967,11 @@ function foamEstimate(inp){
     if(inp.plateauK > 0.3) { notes.push('plateau k above the calibrated 0.3'); sd.extra += 0.03; }
   }
   if(inp.organic > 0){ uncal.push('organic node growth is not calibrated'); sd.extra += 0.15; }
+  if(inp.topo === 'wet'){ uncal.push('wet foam (Plateau borders) is not calibrated — open-cell law used'); sd.extra += 0.2; }
+  if(inp.fillet > 0 || inp.node > 0){ uncal.push('node fillet / node size are not calibrated'); sd.extra += 0.12; }
+  if(['bimodal', 'mirror', 'cubic'].includes(inp.seedMode)){ uncal.push({bimodal: 'two-size mix', mirror: 'mirror-symmetric seeds', cubic: 'cubic-symmetric seeds'}[inp.seedMode] + ' — not calibrated (disordered law used)'); sd.extra += 0.12; }
   if(!inp.normalize){ uncal.push('normalize off (calibrated with normalize on)'); sd.extra += 0.1; }
+  if(inp.field === 2 && !closed){ notes.push('open-cell law fitted on the previous field, whose struts ran thicker near nodes — refit on the exact field pending'); sd.extra = Math.hypot(sd.extra, 0.05); }
   if(!inp.periodic) notes.push('bounded foam — the estimate assumes the cube repeats');
   if(Math.abs(inp.nuS - C.nuS) > 0.05) notes.push('calibrated at ν_s = 0.3; values scale with E_s, only weakly with ν_s');
   Ebar *= rel;
@@ -2136,7 +3007,7 @@ function estStale(){
 }
 async function runEstimate(){
   const btn = $('runBtn');
-  if(state.seeds.length < 4){ $('homo-status').textContent = 'need at least 4 seeds'; return; }
+  if(state.seeds.length < 1){ $('homo-status').textContent = 'no seeds'; return; }
   btn.disabled = true; btn.textContent = 'Estimating…';
   $('homo-status').textContent = 'sampling the field at 64³…';
   const t0 = performance.now();
@@ -2149,7 +3020,8 @@ async function runEstimate(){
     const Es = parseFloat($('Es').value) || 110, nuS = parseFloat($('nuS').value);
     const est = foamEstimate({
       topo: state.topology, rho: fr[0], rhoNoSwell: plateau ? fr[1] : fr[0], seedMode: state.seedMode, regularity: state.regularity,
-      plateauK: state.topology === 'plateau' ? state.plateauK : 0, organic: state.organic, normalize: state.normalize,
+      plateauK: state.topology === 'plateau' ? state.plateauK : 0, organic: 0, normalize: state.normalize, field: 2,
+      fillet: state.topology === 'wet' ? 0 : state.fillet, node: state.topology === 'wet' ? 0 : state.node,
       stretch: state.aniso ? [state.anisoX, state.anisoY, state.anisoZ] : [1, 1, 1], cells: state.actualCount, periodic: state.periodic,
       Es, nuS: isFinite(nuS) ? nuS : 0.3
     });
@@ -2484,14 +3356,14 @@ requestAnimationFrame(frame);
 
   var SECTIONS = [
     { title:'Topology', items:[
-      { id:'topology', label:'topology · open / closed / plateau', anchor:{row:'#mOpen'},
-        what:'Which part of the cell boundaries becomes solid: the edges where three or more cells meet, the faces between two cells, or edges with soap-film style rounded junctions.',
-        see:'Open = a strut network (reticulated foam); Closed = thin walls sealing each cell; Plateau = struts that swell where they join, like dried soap foam.',
+      { id:'topology', label:'topology · open / closed / plateau / wet', anchor:{row:'#mOpen'},
+        what:'Which part of the cell boundaries becomes solid: the edges where three or more cells meet, the faces between two cells, edges that swell where they join, or wet foam — the material left between cells that have been rounded off.',
+        see:'Open = a strut network (reticulated foam); Closed = thin walls sealing each cell; Plateau = struts that swell where they join; Wet = true Plateau borders: struts with concave triangular cross-sections meeting at tetrahedral nodes, like real liquid foam.',
         why:'Open and plateau give the interconnected porosity bone ingrowth needs; closed gives sealed cells and higher stiffness per mass.' }
     ]},
     { title:'Geometry', items:[
-      { id:'cells', label:'cells', range:'50 – 800', anchor:{row:'#sCount'},
-        what:'How many seeds (and so cells) fill the cube. Lattice modes round to the nearest whole lattice, and the actual count shows beside the target when they differ.',
+      { id:'cells', label:'cells', range:'8 – 500 · lattices from one cube', anchor:{row:'#sCount'},
+        what:'How many seeds (and so cells) fill the repeating cube. The slider takes fine steps at low counts. Lattice modes round to the nearest whole lattice (down to a single cube), and the actual count shows beside the target when they differ.',
         see:'More cells = smaller pores packed tighter; fewer = larger, open cells.',
         why:'Sets pore size for a given cube; the mm read-out shows the cube edge at your cell size.' },
       { id:'cellsize', label:'cell size', range:'mm · display only', anchor:{row:'#cellSizeMM'},
@@ -2499,22 +3371,30 @@ requestAnimationFrame(frame);
         see:'No change to the shape — rescales the mm read-outs beside the sliders.',
         why:'Anchors the dimensionless model to physical units; does not touch the exported JSON.' },
       { id:'thickness', label:'thickness', range:'0.02 – 0.50', anchor:{row:'#sThick'},
-        what:'Half-thickness of walls (closed) or strut radius (open / plateau). The mm read-out shows the full wall or the strut diameter. Normalize divides by the field gradient so thickness is a true perpendicular distance.',
-        see:'Walls and struts fatten or thin; with normalize on they stay uniform, with it off they vary with the local field slope.',
+        what:'Half-thickness of walls (closed) or strut radius (open / plateau), measured as a true distance from the wall mid-plane or strut axis. The mm read-out shows the full wall or the strut diameter.',
+        see:'Walls and struts fatten or thin evenly — the same thickness everywhere, including near nodes and with stretch on.',
         why:'Your relative-density dial. Keep the full wall above your printer’s minimum feature size.' },
       { id:'plateauk', label:'plateau k', range:'0.01 – 0.20 · plateau', anchor:{row:'#sPlateauK'},
         what:'Extra material added where struts meet, fading out along each strut.',
         see:'Junctions round off and swell as k rises.',
         why:'Fillets the nodes — lowers stress concentration at strut joints.' },
-      { id:'organic', label:'organic', range:'0 – 10', anchor:{row:'#sOrganic'},
-        what:'Inflates the vertices where four or more cells meet, without thickening the struts between them.',
-        see:'Nodes grow from sharp joints into rounded, bulbous knots — a trabecular, sea-urchin look.',
-        why:'Biomimetic node shaping; mass moves to the junctions where load paths cross.' }
+      { id:'border', label:'border', range:'0.05 – 1.50 · wet', anchor:{row:'#sBorder'},
+        what:'Plateau border radius. Each cell is rounded off by this radius; the solid is the space left between the rounded cells.',
+        see:'Small = thin, sharp-edged borders (a dry foam); large = fat borders and nodes (a wet foam). Cells still touch across their faces, so the foam stays open.',
+        why:'The physically correct shape of a foam\u2019s struts — concave sides and thickening into the nodes — from a single dial.' },
+      { id:'fillet', label:'fillet', range:'0 – 0.60', anchor:{row:'#sFillet'},
+        what:'A circular blend radius where struts (or walls, in closed mode) meet. Every pair of neighbouring members is joined by a concave fillet of this radius.',
+        see:'Sharp joints become smooth, concave transitions. Mid-span thickness stays exactly what you set. Re-bakes the preview.',
+        why:'Lowers stress concentration at the nodes and gives the smooth, bone-like junctions of trabecular structure.' },
+      { id:'node', label:'node', range:'0 – 0.40', anchor:{row:'#sNode'},
+        what:'Extra radius of a sphere placed at every node (where struts or walls meet), blended in with the fillet.',
+        see:'Heavier, rounded nodes; struts keep their thickness between them. The mm read-out shows the node diameter.',
+        why:'Moves mass to the junctions where load paths cross, smoothly.' }
     ]},
     { title:'Seed distribution', items:[
       { id:'seeds', label:'seed mode', anchor:{into:'#seedLabel'},
-        what:'How seed points are placed. Poisson-disk keeps a minimum gap between seeds; Lloyd-relaxed then evens out cell volumes; uniform random has no gap; Weaire–Phelan and Kelvin are the classic equal-volume foam lattices.',
-        see:'Stochastic modes give irregular, bone-like cells; lattices give repeating, identical cells.',
+        what:'How seed points are placed. Poisson-disk keeps a minimum gap between seeds; Lloyd-relaxed then evens out cell volumes; uniform random has no gap. Two-size mix gives two cell sizes with exact cell volumes (power cells). Mirror and cubic are random layouts with a built-in symmetry. Weaire–Phelan, Kelvin, FCC and C15 are ordered foam lattices.',
+        see:'Stochastic modes give irregular, bone-like cells; symmetric modes look irregular but repeat in mirror image; lattices give repeating, identical cells (add disorder to break them up).',
         why:'Controls cell-size scatter — the main lever between trabecular-like irregularity and engineered regularity.' },
       { id:'periodic', label:'periodic',
         what:'Makes opposite faces of the cube share one seed pattern.',
@@ -2524,10 +3404,22 @@ requestAnimationFrame(frame);
         what:'Minimum seed gap as a fraction of the tightest gap that still fits the requested cell count. The mm read-out shows that gap.',
         see:'Near 1 = very even, honeycomb-like cells; lower = more scatter in cell size.',
         why:'Tunes how uniform the pores are without changing how many there are.' },
-      { id:'lloyd', label:'Lloyd iter', range:'0 – 12', anchor:{row:'#sLloyd'},
+      { id:'lloyd', label:'Lloyd iter', range:'0 – 60 (Lloyd) · 0 – 12 (two-size, symmetric)', anchor:{row:'#sLloyd'},
         what:'Rounds of moving each seed to the centre of its own cell.',
-        see:'Cells become rounder and closer in volume with each round.',
-        why:'Approaches the equal-volume cells of real foams while staying irregular.' },
+        see:'Cells become rounder and closer in volume with each round. After many rounds the structure factor dips toward 0 at long wavelengths: the layout becomes hyperuniform.',
+        why:'Approaches the equal-volume cells of real foams while staying irregular; hyperuniform networks are unusually isotropic and stiff for their disorder.' },
+      { id:'ratio', label:'size ratio · large share', range:'1.1 – 3.0 · 0.05 – 0.95 · two-size mix', anchor:{row:'#sRatio'},
+        what:'Diameter of the large cells over the small ones, and the share of cells that are large. Each cell gets exactly its target volume by solving for per-cell weights (semi-discrete optimal transport).',
+        see:'Big and small pores mixed through the cube, with every cell of a size exactly that size.',
+        why:'Controlled polydispersity: real foams and bone are not one cell size, and the mix changes permeability and stiffness.' },
+      { id:'disorder', label:'disorder', range:'0 – 0.50 · lattices', anchor:{row:'#sJitter'},
+        what:'Random nudge of each lattice seed, as a fraction of the mean seed spacing.',
+        see:'The lattice breaks up gradually. Kelvin keeps its 14-faced cells up to about 0.1; past about 0.5 any lattice looks random.',
+        why:'A controlled path from ordered to stochastic foam with the same cell count.' },
+      { id:'sk', label:'structure factor S(k)', anchor:{into:'#sk-wrap'},
+        what:'How much the seed density fluctuates at each wavelength, from the seeds themselves (periodic seeds only).',
+        see:'1 = random. A dip toward 0 at the left (long wavelengths) means hyperuniform: large-scale fluctuations suppressed.',
+        why:'A direct read of how ordered a disordered foam is at large scales.' },
       { id:'rng', label:'RNG seed', anchor:{row:'#rngSeed'},
         what:'Number that fixes the random layout. Same number + same settings = same foam.',
         see:'Reseed draws a new layout with the same statistics.',
@@ -2556,7 +3448,7 @@ requestAnimationFrame(frame);
     { title:'Stiffness', items:[
       { id:'estimate', label:'Estimate stiffness · E_s · ν_s', anchor:{row:'#runBtn'},
         what:'Measures the solid fraction of the exact foam (64³ sample) and estimates Ex, Ey, Ez, the shear moduli and Poisson\u2019s ratio from laws fitted to 67 F13LD.lab FFT homogenizations of this same geometry.',
-        see:'A directional stiffness surface, per-axis values, a likely range for each, and a note when a setting is outside the calibration (ordered lattices, organic growth, uniform-random seeds, density outside the fitted range).',
+        see:'A directional stiffness surface, per-axis values, a likely range for each, and a note when a setting is outside the calibration (ordered lattices, wet foam, fillet / node, two-size and symmetric seeds, uniform-random seeds, density outside the fitted range).',
         why:'Compare foam designs and size them early. For a measured answer, Open in F13LD.lab.' }
     ]},
     { title:'Handoff', items:[
