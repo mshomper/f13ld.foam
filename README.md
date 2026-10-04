@@ -16,7 +16,7 @@ Live: https://mshomper.github.io/f13ld.foam
 - **Fillet and node** (v0.6.0, replacing organic): a circular blend radius where neighbouring struts (or walls) meet, and an optional sphere at every node, blended the same way. Mid-span thickness is unchanged.
 - **Exact field** (v0.6.0): the field is the true distance to the nearest cell wall (closed) or cell edge (open, plateau), from the bisector planes of the 8 nearest seeds, searched over the seeds' periodic copies. Walls are 2t thick and struts 2t across everywhere — near nodes, with stretch on, and in tiles of only a few cells. It replaces v0.5.0's gradient normalization (and its toggle), whose struts ran up to a third thicker near nodes.
 - **Anisotropy**: stretches the distance metric per axis for elongated, load-aligned cells.
-- **Preview**: GPU bake of the exact wall and edge distances per voxel (same construction as the export field, matched to half-float rounding), raymarched with guaranteed-safe step lengths; clip plane, 3×3×3 tile check, mm read-outs. Thickness, plateau k and organic stay live; only seed and stretch changes re-bake.
+- **Preview**: GPU bake of the exact wall and edge distances per voxel (same construction as the export field, matched to half-float rounding), raymarched with guaranteed-safe step lengths; clip plane, 3×3×3 tile check, mm read-outs. Thickness and plateau k stay live; seed, stretch, fillet, node and border changes re-bake. The two-size mix and symmetric seeds are generated in a worker, and the bake waits for them.
 - **Solid fraction** (v0.4.0): live read-out under the equation, sampled at 48³ from the exact field F13LD.mesh exports and F13LD.lab homogenizes (shown with ≈ for bounded foams, whose faces don't wrap).
 
 ## Stiffness estimate (v0.5.0)
@@ -32,7 +32,7 @@ Live: https://mshomper.github.io/f13ld.foam
 
 **Calibration status (2026-10-04): provisional.** 27 of the 67 lab runs behind these laws stopped at the lab's old 300-iteration cap (open and plateau foams at 18–35 %, closed at 12–18 % on the coarse grid), and a stopped solve reads stiff, so the open law may read high above ~18 % solid. Next: re-run the whole calibration on the exact field at the 1000-iteration cap, plus the plateau and cell-count passes, then refit (F13LD.lab `docs/FOAM_CALIBRATION.md` §11). The constants will move in v0.6.1. Plan: [`docs/NEXT_STEPS.md`](docs/NEXT_STEPS.md).
 
-Each value comes with a likely range (fit scatter, seed-to-seed scatter at this cell count, and an open cell-count question still being measured). Ordered lattices (Kelvin, Weaire–Phelan), uniform-random seeds, organic growth, normalize off and densities outside 5–35 % (open) / 12–35 % (closed) get an estimate marked **not calibrated**. The result rides in the exported recipe as a `homogenization` block (F13LD.tpms field names), so F13LD.mesh shows it. For a measured answer, use **Open in F13LD.lab**.
+Each value comes with a likely range (fit scatter, seed-to-seed scatter at this cell count, and an open cell-count question still being measured). Ordered lattices (Kelvin, Weaire–Phelan, FCC, C15), uniform-random seeds, the v0.6.0 foams (wet, fillet / node, two-size mix, symmetric seeds) and densities outside 5–35 % (open) / 12–35 % (closed) get an estimate marked **not calibrated**. The result rides in the exported recipe as a `homogenization` block (F13LD.tpms field names), so F13LD.mesh shows it. For a measured answer, use **Open in F13LD.lab**.
 
 ## Handoff
 
@@ -47,13 +47,16 @@ Each value comes with a likely range (fit scatter, seed-to-seed scatter at this 
   "meta":     { "tool": "f13ld.foam", "version": "0.6.0", … },
   "domain":   { "world": [-5, 5], "periodic": true, … },
   "seeds":    { "mode", "count", "regularity", "lloyd_iterations", "rng_seed",
-                "generator": "FoamSeeds/1", "positions": [x, y, z, …] },
+                "size_ratio", "large_fraction", "jitter",
+                "generator": "FoamSeeds/2", "positions": [x, y, z, …],
+                "weights": [w, …] },            // two-size mix only
   "anisotropy": { "enabled", "stretch": [sx, sy, sz] },
-  "geometry": { "mode": "open|closed|plateau", "thickness", "plateau_k",
-                "organic", "normalize", "field": 2, "tile_mm" } }
+  "geometry": { "mode": "open|closed|plateau|wet", "thickness", "plateau_k",
+                "fillet", "node", "border", "organic": 0, "normalize": true,
+                "field": 2, "tile_mm" } }
 ```
 
-`tile_mm` is the cube edge at the cell size set in the tool; mesh uses it as the default cell size. `field: 2` selects the exact field (v0.6.0+); recipes without it build with the original field in mesh and the lab.
+`tile_mm` is the cube edge at the cell size set in the tool; mesh uses it as the default cell size. `field: 2` selects the exact field (v0.6.0+); recipes without it build with the original field in mesh and the lab. `weights` are power-cell weights (seed i owns the points where |p − sᵢ|² − wᵢ is smallest). `border` is the wet-foam border radius; `fillet` and `node` apply to the other topologies.
 
 ## Shared code
 
