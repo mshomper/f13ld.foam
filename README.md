@@ -1,13 +1,19 @@
 # F13LD.foam
 
-Lightweight, browser-native tool for building periodic Voronoi foams — open-cell strut networks, closed-cell walls, and soap-film Plateau borders — and handing them to [F13LD.mesh](https://mshomper.github.io/f13ld.mesh) for watertight 3MF export. Part of the [F13LD](https://f13ld.app) suite.
+Lightweight, browser-native tool for building periodic Voronoi and Laguerre foams — open-cell strut networks, closed-cell walls, swollen-junction struts and wet-foam Plateau borders — and handing them to [F13LD.mesh](https://mshomper.github.io/f13ld.mesh) for watertight 3MF export. Part of the [F13LD](https://f13ld.app) suite.
 
 Live: https://mshomper.github.io/f13ld.foam
 
 ## What it does
 
-- **Seeds** in the cube `[-5, 5]³`: Poisson-disk (spacing derived from the cell count, so coverage is even at any count), Lloyd-relaxed, uniform random, Weaire–Phelan and Kelvin lattices. Periodic mode makes opposite faces match so the cube tiles. 8–500 cells on a log-scaled slider (fine steps at low counts); lattices go down to a single cube (2 seeds for Kelvin, 8 for Weaire–Phelan).
-- **Topology**: open (struts on cell edges), closed (walls on cell faces), Plateau (struts with swollen junctions), plus an organic vertex bulge.
+- **Seeds** in the cube `[-5, 5]³`, 8–500 cells on a log-scaled slider (fine steps at low counts). Periodic mode makes opposite faces match so the cube tiles.
+  - *Stochastic:* Poisson-disk (spacing derived from the cell count, so coverage is even at any count), Lloyd-relaxed (up to 60 rounds — enough to become hyperuniform), uniform random.
+  - *Two-size mix* (v0.6.0): two cell sizes (size ratio, share of large cells) with **exact cell volumes** — power (Laguerre) cells whose weights are solved by semi-discrete optimal transport (damped Newton), alternated with centroid relaxation.
+  - *Symmetric stochastic* (v0.6.0): random Poisson-disk seeds with mirror symmetry in x, y, z (orthotropic stiffness) or full cubic symmetry (mirrors + axis swaps, cubic stiffness), relaxed on exact cells.
+  - *Lattices:* Weaire–Phelan, Kelvin, FCC (rhombic dodecahedra) and C15 Laves (Frank–Kasper, 16- and 12-faced cells), down to a single cube, with a **disorder** slider (Gaussian nudge, σ as a fraction of the mean spacing).
+- **Structure factor S(k)** (v0.6.0): live plot of the seeds' S(k) over the cube's own wave vectors; a dip toward 0 at long wavelengths marks a hyperuniform layout.
+- **Topology**: open (struts on cell edges), closed (walls on cell faces), plateau (struts with swollen junctions), and **wet** (v0.6.0): true Plateau borders — each cell rounded off by a border radius, the solid being what's left between the rounded cells (concave triangular struts, tetrahedral nodes).
+- **Fillet and node** (v0.6.0, replacing organic): a circular blend radius where neighbouring struts (or walls) meet, and an optional sphere at every node, blended the same way. Mid-span thickness is unchanged.
 - **Exact field** (v0.6.0): the field is the true distance to the nearest cell wall (closed) or cell edge (open, plateau), from the bisector planes of the 8 nearest seeds, searched over the seeds' periodic copies. Walls are 2t thick and struts 2t across everywhere — near nodes, with stretch on, and in tiles of only a few cells. It replaces v0.5.0's gradient normalization (and its toggle), whose struts ran up to a third thicker near nodes.
 - **Anisotropy**: stretches the distance metric per axis for elongated, load-aligned cells.
 - **Preview**: GPU bake of the exact wall and edge distances per voxel (same construction as the export field, matched to half-float rounding), raymarched with guaranteed-safe step lengths; clip plane, 3×3×3 tile check, mm read-outs. Thickness, plateau k and organic stay live; only seed and stretch changes re-bake.
