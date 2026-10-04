@@ -6,11 +6,11 @@ Live: https://mshomper.github.io/f13ld.foam
 
 ## What it does
 
-- **Seeds** in the cube `[-5, 5]³`: Poisson-disk (spacing derived from the cell count, so coverage is even at any count), Lloyd-relaxed, uniform random, Weaire–Phelan and Kelvin lattices. Periodic mode makes opposite faces match so the cube tiles.
+- **Seeds** in the cube `[-5, 5]³`: Poisson-disk (spacing derived from the cell count, so coverage is even at any count), Lloyd-relaxed, uniform random, Weaire–Phelan and Kelvin lattices. Periodic mode makes opposite faces match so the cube tiles. 8–500 cells on a log-scaled slider (fine steps at low counts); lattices go down to a single cube (2 seeds for Kelvin, 8 for Weaire–Phelan).
 - **Topology**: open (struts on cell edges), closed (walls on cell faces), Plateau (struts with swollen junctions), plus an organic vertex bulge.
-- **Normalize**: divides the cell-boundary distance by its gradient before subtracting thickness, so walls and struts have one true thickness (2t) everywhere.
+- **Exact field** (v0.6.0): the field is the true distance to the nearest cell wall (closed) or cell edge (open, plateau), from the bisector planes of the 8 nearest seeds, searched over the seeds' periodic copies. Walls are 2t thick and struts 2t across everywhere — near nodes, with stretch on, and in tiles of only a few cells. It replaces v0.5.0's gradient normalization (and its toggle), whose struts ran up to a third thicker near nodes.
 - **Anisotropy**: stretches the distance metric per axis for elongated, load-aligned cells.
-- **Preview**: GPU bake of the four nearest-seed distances per voxel (grid-accelerated, exact), raymarched with guaranteed-safe step lengths; clip plane, 3×3×3 tile check, mm read-outs.
+- **Preview**: GPU bake of the exact wall and edge distances per voxel (same construction as the export field, matched to half-float rounding), raymarched with guaranteed-safe step lengths; clip plane, 3×3×3 tile check, mm read-outs. Thickness, plateau k and organic stay live; only seed and stretch changes re-bake.
 - **Solid fraction** (v0.4.0): live read-out under the equation, sampled at 48³ from the exact field F13LD.mesh exports and F13LD.lab homogenizes (shown with ≈ for bounded foams, whose faces don't wrap).
 
 ## Stiffness estimate (v0.5.0)
@@ -21,6 +21,8 @@ Live: https://mshomper.github.io/f13ld.foam
 - × 0.956 / 0.985 for Poisson-disk seeds (open / closed) · × 1 + 0.118 (1 − e^(−k/0.111)) for plateau borders that add mass
 - ν = 0.433 − 0.468 ρ (open), 0.294 (closed) · G = E / 2(1 + ν)
 - anisotropy stretch moves stiffness toward the stretched axis as s^2.49 (open) / s^1.63 (closed), keeping the mean
+
+**Exact field (v0.6.0):** the open and plateau laws were fitted on the previous field, whose struts ran thicker near nodes; their estimates carry a note and a wider range until the lab calibration is re-run on the exact field (F13LD.lab `docs/FOAM_CALIBRATION.md` §11). The closed law carries over.
 
 **Calibration status (2026-10-03): provisional.** 27 of the 67 lab runs behind these laws stopped at the lab's old 300-iteration cap (open and plateau foams at 18–35 %, closed at 12–18 % on the coarse grid), and a stopped solve reads stiff, so the open law may read high above ~18 % solid. The re-run at the new 1000-iteration cap, a cell-count pass and a refit are next (F13LD.lab `docs/FOAM_CALIBRATION.md` §8, §10); the constants will move in v0.5.1.
 
@@ -42,14 +44,14 @@ Each value comes with a likely range (fit scatter, seed-to-seed scatter at this 
                 "generator": "FoamSeeds/1", "positions": [x, y, z, …] },
   "anisotropy": { "enabled", "stretch": [sx, sy, sz] },
   "geometry": { "mode": "open|closed|plateau", "thickness", "plateau_k",
-                "organic", "normalize", "tile_mm" } }
+                "organic", "normalize", "field": 2, "tile_mm" } }
 ```
 
-`tile_mm` is the cube edge at the cell size set in the tool; mesh uses it as the default cell size.
+`tile_mm` is the cube edge at the cell size set in the tool; mesh uses it as the default cell size. `field: 2` selects the exact field (v0.6.0+); recipes without it build with the original field in mesh and the lab.
 
 ## Shared code
 
-The seed generator (`FoamSeeds`, between the `BEGIN FoamSeeds` / `END FoamSeeds` markers in `index.html`) is a byte-for-byte copy of the one in F13LD.mesh's `worker/m25-sdf-foam.js`, so mesh can rebuild the same seeds from the settings if positions are ever missing. Edit both copies together, bump `FoamSeeds.VERSION`, and run mesh's `tests/foamseeds.js`.
+The seed generator (`FoamSeeds`) and the field (`foamSeedsFromRecipe`, `buildFoamSDF`, `buildFoamSDF2`, between the `BEGIN FoamSeeds` / `END foam field` markers in `index.html`) are byte-for-byte copies of F13LD.mesh's `worker/m25-sdf-foam.js` and F13LD.lab's `13d-foam-kernel.js`. Edit all three together (bump `FoamSeeds.VERSION` for generator changes) and run mesh's `tests/foamseeds.js` and the lab's `validate-foam.js`.
 
 ## License
 
