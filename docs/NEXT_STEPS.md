@@ -1,7 +1,7 @@
 # F13LD.foam — Next Steps (session handoff)
 
-**As of:** v0.6.0 · 2026-10-04 · exact foam field, v0.6.0 foams, stiffness estimate provisional
-**Suite on main:** F13LD.lab v0.17.3 · F13LD.mesh v0.9.3 · F13LD.foam v0.6.0
+**As of:** v0.7.0 · 2026-10-05 · exact foam field, v0.6.0 foams, stiffness estimate provisional
+**Suite on main:** F13LD.lab v0.17.4 · F13LD.mesh v0.9.4 · F13LD.foam v0.7.0 (after the wet-edge-trim PRs merge)
 **Owner direction:** Matt Shomper directs implementation. Analyze and present proposed changes for approval before writing code. Don't over-deliberate.
 
 ---
@@ -15,6 +15,7 @@
 | **v0.5.0** | 2026-10-03 | **Estimate stiffness**: Ex/Ey/Ez, shear moduli and ν from laws fitted to 67 F13LD.lab homogenizations, with likely ranges and "not calibrated" notes. The `homogenization` block rides in the recipe (F13LD.mesh shows it) |
 | (docs) | 2026-10-03 | Calibration marked provisional: 27 of the lab runs had stopped at the old 300-iteration cap |
 | **v0.6.0** | 2026-10-04 | **Exact field** (`geometry.field: 2`): true distance to walls / edges, searched over periodic copies, so walls and struts are 2t everywhere, including stretched foams and single-cube tiles. New foams: wet Plateau borders, fillet / node, two-size mix (power cells, exact volumes), mirror / cubic symmetric seeds, FCC and C15 lattices with disorder, S(k) plot, 8–500 cells. (Built in a separate session from the v0.4.0–v0.5.0 work) |
+| **v0.7.0** | 2026-10-05 | **Wet foam edge + continuous field.** The wet field now measures the neighbouring bubbles too, so it no longer jumps across cell faces (those jumps staircased mesh surfaces). New **edge** control (`geometry.edge_min`, world units, default 0.03): cusp tips narrower than it are closed and rounded by a circular blend. Absent / 0 = sharp cusps. Needs F13LD.mesh v0.9.4 / F13LD.lab v0.17.4 for exports to match |
 
 The field code (`FoamSeeds`, `foamSeedsFromRecipe`, `buildFoamSDF`, `buildFoamSDF2`) is byte-identical in three places: here (`index.html`, between `BEGIN FoamSeeds` / `END foam field`), F13LD.mesh `worker/m25-sdf-foam.js`, and F13LD.lab `13d-foam-kernel.js`.
 
