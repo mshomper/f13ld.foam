@@ -224,7 +224,7 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
     <div class="fh-right">
       <button class="fh-mesh-btn" onclick="openInMesh()">⬡ Open in F13LD.mesh</button>
       <button class="fh-mesh-btn" onclick="openInLab()" title="Homogenize this foam in F13LD.lab — stiffness from the validated FFT solver">⚗ Open in F13LD.lab</button>
-      <span class="fh-version">v0.6.0</span>
+      <span class="fh-version">v0.7.0</span>
       <div class="fh-icon">
         <svg width="18" height="18" viewBox="0 0 40 40" fill="none" stroke="#5C4624" stroke-width="1.9" stroke-linejoin="round">
           <path d="M5 8 L17 4 L24 12 L18 21 L7 19 Z"/>
@@ -305,6 +305,13 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
         <input type="range" id="sBorder" min="0.05" max="1.50" step="0.01" value="0.40" title="Plateau border radius: each cell is rounded by this radius and the material is what's left between the rounded cells. Larger = wetter foam, thicker borders.">
         <span class="sv" id="vsBorder">0.40</span>
         <span class="mm-hint" id="vsBorder_mm"></span>
+      </div>
+      <div class="sc-group hidden" id="grp-edge">
+        <label>edge</label>
+        <input type="range" id="sEdge" min="0" max="0.20" step="0.005" value="0.030" title="Minimum edge width: where the border thins to a sharp cusp, anything narrower than this is cut back and the tip rounded. Keeps the cusps meshable and printable. 0 = sharp cusps.">
+        <span class="sv" id="vsEdge">0.030</span>
+        <span class="mm-hint" id="vsEdge_mm"></span>
+        <span class="mm-hint" id="vsEdge_warn"></span>
       </div>
       <div class="sc-group" id="grp-fillet">
         <label>fillet</label>
@@ -443,7 +450,7 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
 
 <script>
 // ============================================================================
-// F13LD.foam v0.6.0 — discrete cellular scaffolds
+// F13LD.foam v0.7.0 — discrete cellular scaffolds
 // Seeds (CPU) → GPU bake of the exact wall / edge distances per voxel into a 3D
 // texture → live raymarch of the foam field sampled from that texture, using
 // guaranteed-safe step lengths so rays always reach the far side of the cube.
@@ -501,6 +508,7 @@ const state = {
   fillet: 0,          // circular blend radius where struts / walls meet
   node: 0,            // extra node-sphere radius
   border: 0.40,       // wet: Plateau border radius
+  edgeMin: 0.03,      // wet: minimum edge width (cusp tips narrower are trimmed)
   sizeRatio: 2.0,     // bimodal: large ÷ small cell diameter
   largeFraction: 0.30,// bimodal: share of large cells
   jitter: 0,          // lattices: disorder (σ ÷ mean spacing)
@@ -1240,8 +1248,10 @@ function buildFoamSDF(json){
 // The 8 nearest seeds are searched over the seeds and their periodic copies.
 // Solid where < 0:
 //   closed : wall − t          open : edge − t          plateau : edge − t − E
-//   wet    : border − dist(p, cell shrunk by border) + 0.02·border
-//            (Plateau borders: the space left between rounded cells)
+//   wet    : 0.02·border − smin_EK(eᵣ), eᵣ = dist(p, bubble r) for p's cell
+//            and its 3 nearest neighbours; bubble = cell shrunk by the border
+//            and grown back (Plateau borders: the space left between rounded
+//            cells). EK = edge_min/(2 − √2) closes gaps narrower than edge_min.
 // fillet k blends neighbouring walls / edges with a circular fillet of radius
 // k; node n adds a sphere of radius t + n at every vertex, blended the same way.
 // E (plateau swell) = k_p·(1 − smoothstep(0, 0.35, d₃ − d₁)), dᵢ = power distance.
@@ -1258,6 +1268,9 @@ function buildFoamSDF2(json){
   const FK=(mode!=='wet'&&typeof g.fillet==='number'&&g.fillet>0)?g.fillet:0;
   const NR=(mode!=='wet'&&typeof g.node==='number'&&g.node>0)?g.node:0;
   const BR=(typeof g.border==='number'&&g.border>0)?g.border:0.3;
+  // wet: minimum edge width — gaps between bubbles narrower than this close up
+  const EW=(mode==='wet'&&typeof g.edge_min==='number'&&g.edge_min>0)?g.edge_min:0;
+  const EK=EW/(2-Math.SQRT2);   // circular blend radius that closes gaps < EW
   const L=10, H=5, K=8;
   // Weights → a non-negative offset per seed (wmax − wᵢ), which leaves the
   // cells unchanged and keeps every power distance ≥ the metric distance.
@@ -1409,7 +1422,33 @@ function buildFoamSDF2(json){
     }
     return m;
   }
-  // Wet: distance from p to the cell shrunk by the border radius (0 inside it),
+  // Wet: −(smooth) distance to the nearest bubble, solid where < 0. A bubble
+  // is its cell shrunk by the border, then grown back by it; eᵣ = distance
+  // from p to bubble r. p's own bubble decides the sign, but the neighbours'
+  // bubbles are needed for the value: without them the field jumps across
+  // every cell face and the mesher staircases the surface there. The eᵣ are
+  // blended with a circular fillet of radius EK, which closes every gap
+  // narrower than EW (the cusp tips) and rounds what is left.
+  const WL=[];
+  function swap0(r){
+    let t=D[0];D[0]=D[r];D[r]=t; t=VX[0];VX[0]=VX[r];VX[r]=t;
+    t=VY[0];VY[0]=VY[r];VY[r]=t; t=VZ[0];VZ[0]=VZ[r];VZ[r]=t;
+  }
+  function wetField(){
+    planes(BR);
+    let m=Math.min(shrunkDist(),BR+1)-BR;
+    WL.length=0; WL.push(m);
+    for(let r=1;r<4;r++){
+      // bubble r lies beyond the bisector with seed r, so it is at least cᵣ away
+      const ax=(VX[0]-VX[r])*mx, ay=(VY[0]-VY[r])*my, az=(VZ[0]-VZ[r])*mz;
+      const cr=(D[r]-D[0])/(2*(Math.sqrt(ax*ax+ay*ay+az*az)||1e-12));
+      if(cr>=m+EK) continue;
+      swap0(r); planes(BR); const e=Math.min(shrunkDist(),BR+1)-BR; swap0(r);
+      WL.push(e); if(e<m) m=e;
+    }
+    return -smin(WL,EK)+0.02*BR;
+  }
+  // Distance from p to the cell shrunk by the border radius (0 inside it),
   // over its faces, edges and vertices.
   function shrunkDist(){
     let out=false;
@@ -1436,10 +1475,7 @@ function buildFoamSDF2(json){
   return p=>{
     const px=((p[0]+H)%L+L)%L-H, py=((p[1]+H)%L+L)%L-H, pz=((p[2]+H)%L+L)%L-H;
     nearestK(px,py,pz);
-    if(mode==='wet'){
-      planes(BR);
-      return BR-Math.min(shrunkDist(),BR+1)+0.02*BR;
-    }
+    if(mode==='wet') return wetField();
     planes(0);
     let E=0;
     if(Kp>0) E=Kp*(1-smooth(0,0.35,Math.sqrt(D[2])-Math.sqrt(D[0])));
@@ -1649,6 +1685,7 @@ uniform float uRm;          // metric radius covered per ring
 uniform float uFillet;      // circular blend radius
 uniform float uNode;        // extra node-sphere radius
 uniform float uBorder;      // wet: Plateau border radius
+uniform float uEdgeK;       // wet: blend radius closing gaps < edge width
 uniform int uWet;
 #define K 8
 float Dk[K];
@@ -1825,8 +1862,24 @@ void main(){
   }
   float d31 = sqrt(Dk[2]) - sqrt(Dk[0]);
   if(uWet == 1){
+    // Distance to p's own bubble and to the 3 nearest neighbours' bubbles
+    // (each neighbour's cell: swap it into slot 0), blended with a circular
+    // fillet of radius uEdgeK — same as buildFoamSDF2's wetField.
     planes(uBorder);
-    float g = uBorder - min(shrunkDist(), uBorder + 1.0) + 0.02 * uBorder;
+    float m = min(shrunkDist(), uBorder + 1.0) - uBorder;
+    nMem = 0; addMem(m);
+    for(int r = 1; r < 4; r++){
+      float cr = (Dk[r] - Dk[0]) / (2.0 * max(length((Vk[0] - Vk[r]) * uMetric), 1e-12));
+      if(cr >= m + uEdgeK) continue;
+      float td = Dk[0]; Dk[0] = Dk[r]; Dk[r] = td;
+      vec3 tv = Vk[0]; Vk[0] = Vk[r]; Vk[r] = tv;
+      planes(uBorder);
+      float e = min(shrunkDist(), uBorder + 1.0) - uBorder;
+      td = Dk[0]; Dk[0] = Dk[r]; Dk[r] = td;
+      tv = Vk[0]; Vk[0] = Vk[r]; Vk[r] = tv;
+      addMem(e); m = min(m, e);
+    }
+    float g = -sminMem(uEdgeK) + 0.02 * uBorder;
     fragColor = vec4(1e3, g, d31, 0.0);
     return;
   }
@@ -1843,7 +1896,7 @@ void main(){
 }`;
   bakeProg = linkProgram(VERT, frag);
   if(!bakeProg){ bakeError = 'bake shader failed to compile — see console'; return; }
-  ['uSeeds','uCells','uRes','uZ','uMetric','uHalf','uGrid','uBox','uCell','uRm','uFillet','uNode','uBorder','uWet']
+  ['uSeeds','uCells','uRes','uZ','uMetric','uHalf','uGrid','uBox','uCell','uRm','uFillet','uNode','uBorder','uEdgeK','uWet']
     .forEach(n => bakeU[n] = gl.getUniformLocation(bakeProg, n));
   bakeFBO = gl.createFramebuffer();
   seedTex = gl.createTexture();
@@ -1958,6 +2011,7 @@ function runBake(){
   gl.uniform1f(bakeU.uFillet, wet ? 0 : state.fillet);
   gl.uniform1f(bakeU.uNode, wet ? 0 : state.node);
   gl.uniform1f(bakeU.uBorder, state.border);
+  gl.uniform1f(bakeU.uEdgeK, wet ? edgeBlendK() : 0);
   gl.uniform1i(bakeU.uWet, wet ? 1 : 0);
   bindQuad(bakeProg);
 
@@ -2457,7 +2511,8 @@ function setHint(id, text){
 }
 function updateMMHints(){
   const f = mmFactor();
-  if(!f){ ['vsCount_mm', 'vsThick_mm', 'vsSpacing_mm', 'vsFillet_mm', 'vsNode_mm', 'vsBorder_mm'].forEach(id => setHint(id, '')); return; }
+  updateEdgeWarn();
+  if(!f){ ['vsCount_mm', 'vsThick_mm', 'vsSpacing_mm', 'vsFillet_mm', 'vsNode_mm', 'vsBorder_mm', 'vsEdge_mm'].forEach(id => setHint(id, '')); return; }
   setHint('vsCount_mm', 'cube ' + (DOMAIN_SIZE * f).toFixed(2) + ' mm');
   // The surface sits at exact distance t from the wall mid-plane / strut axis
   // on both sides (real space, with or without stretch), so the full wall or
@@ -2468,6 +2523,17 @@ function updateMMHints(){
   setHint('vsFillet_mm', state.fillet > 0 ? 'R ' + (state.fillet * f).toFixed(3) + ' mm' : '');
   setHint('vsNode_mm', state.node > 0 ? 'node Ø ' + (2 * (state.thickness + state.node) * f).toFixed(3) + ' mm' : '');
   setHint('vsBorder_mm', 'R ' + (state.border * f).toFixed(3) + ' mm');
+  setHint('vsEdge_mm', state.edgeMin > 0 ? 'min edge ' + (state.edgeMin * f).toFixed(3) + ' mm' : '');
+}
+// Wet foam: circular blend radius that closes every gap between bubbles
+// narrower than the edge width (two equal distances drop by k·(1 − √2/2)).
+function edgeBlendK(){ return state.edgeMin > 0 ? state.edgeMin / (2 - Math.SQRT2) : 0; }
+// A Plateau border is only ≈ 0.3 × border across at its thickest, so an edge
+// width near that eats the struts themselves, not just their cusps.
+function updateEdgeWarn(){
+  const near = state.topology === 'wet' && state.edgeMin >= 0.15 * state.border;
+  setHint('vsEdge_warn', near ? 'near strut size — thins the struts' : '');
+  $('vsEdge_warn').style.color = near ? '#d08a5a' : '';
 }
 
 function updateEq(){
@@ -2477,9 +2543,10 @@ function updateEq(){
   const term = state.topology === 'closed' ? 'wall' : 'edge';
   let e, what;
   if(wet){
-    const r = '<b>' + state.border.toFixed(2) + '</b>';
-    e = 'dist(p, cell shrunk by ' + r + ') &gt; ' + r;
-    what = 'wet foam: the material left between cells rounded by the border radius (Plateau borders)';
+    const r = '<b>' + state.border.toFixed(2) + '</b>', w = state.edgeMin > 0;
+    e = (w ? 'smin<sub>' + edgeBlendK().toFixed(3) + '</sub>' : 'min') + '(dist(p, bubbles)) &gt; 0.02·' + r;
+    what = 'wet foam: the material left between bubbles (cells shrunk by ' + r + ', then grown back by it — Plateau borders)' +
+      (w ? '; smin closes gaps narrower than the edge width <b>' + state.edgeMin.toFixed(3) + '</b> and rounds the cusp tips' : '');
   } else {
     e = (blend ? 'smin<sub>' + state.fillet.toFixed(2) + '</sub>(' + term + 's' + (state.node > 0 ? ', nodes − <b>' + state.node.toFixed(2) + '</b>' : '') + ')' : term + '(p)') + ' − ' + t;
     if(state.topology === 'plateau') e = e + ' − <b>' + state.plateauK.toFixed(2) + '</b>·(1 − smoothstep(0, 0.35, d₃ − d₁))';
@@ -2556,6 +2623,7 @@ const bakeChange = () => { scheduleBake(); updateEq(); updateMMHints(); };
 bindRange('sFillet', 'fillet', f2, bakeChange);
 bindRange('sNode', 'node', f2, bakeChange);
 bindRange('sBorder', 'border', f2, () => { scheduleBake(); shaderChange(); updateEq(); });
+bindRange('sEdge', 'edgeMin', v => v.toFixed(3), bakeChange);
 bindRange('sRatio', 'sizeRatio', f2, scheduleRegen);
 bindRange('sLarge', 'largeFraction', f2, scheduleRegen);
 bindRange('sJitter', 'jitter', f2, () => { syncSeedModeUI(); scheduleRegen(); });
@@ -2605,6 +2673,7 @@ function syncTopologyUI(){
   $('grp-plateauK').classList.toggle('hidden', state.topology !== 'plateau');
   $('grp-thick').classList.toggle('hidden', wet);
   $('grp-border').classList.toggle('hidden', !wet);
+  $('grp-edge').classList.toggle('hidden', !wet);
   $('grp-fillet').classList.toggle('hidden', wet);
   $('grp-node').classList.toggle('hidden', wet);
 }
@@ -2720,7 +2789,7 @@ function buildExportJSON(){
     family: 'foam',
     meta: {
       tool: 'f13ld.foam',
-      version: '0.6.0',
+      version: '0.7.0',
       timestamp: new Date().toISOString(),
       preset: SEED_MODE_LABELS[state.seedMode] + ' · ' + state.topology
     },
@@ -2757,6 +2826,9 @@ function buildExportJSON(){
       fillet: state.topology === 'wet' ? 0 : state.fillet,
       node: state.topology === 'wet' ? 0 : state.node,
       border: state.topology === 'wet' ? state.border : null,
+      // v0.7.0 — wet: minimum edge width; cusp tips narrower than this are
+      // trimmed and rounded (buildFoamSDF2 wetField). Absent / 0 = sharp cusps.
+      edge_min: state.topology === 'wet' ? state.edgeMin : null,
       normalize: true,
       // v0.6.0 — exact distance field (buildFoamSDF2); recipes without it build
       // with the original field in F13LD.mesh / F13LD.lab.
@@ -3382,6 +3454,10 @@ requestAnimationFrame(frame);
         what:'Plateau border radius. Each cell is rounded off by this radius; the solid is the space left between the rounded cells.',
         see:'Small = thin, sharp-edged borders (a dry foam); large = fat borders and nodes (a wet foam). Cells still touch across their faces, so the foam stays open.',
         why:'The physically correct shape of a foam\u2019s struts — concave sides and thickening into the nodes — from a single dial.' },
+      { id:'edge', label:'edge', range:'0 – 0.20 · wet', anchor:{row:'#sEdge'},
+        what:'Minimum edge width. A Plateau border thins to a knife-edge cusp where neighbouring cells nearly touch; wherever the gap is narrower than this, it is closed up and the cut is rounded.',
+        see:'The cusp tips pull back and turn round. Small values only touch the tips; values near 0.15 × border start to thin the struts themselves (the hint turns orange). 0 = sharp cusps, as before v0.7.0.',
+        why:'Sharp cusps are thinner than any mesh or print voxel, so they come out jagged or broken. Set this to about your printer\u2019s minimum feature (the mm read-out) or two mesh voxels.' },
       { id:'fillet', label:'fillet', range:'0 – 0.60', anchor:{row:'#sFillet'},
         what:'A circular blend radius where struts (or walls, in closed mode) meet. Every pair of neighbouring members is joined by a concave fillet of this radius.',
         see:'Sharp joints become smooth, concave transitions. Mid-span thickness stays exactly what you set. Re-bakes the preview.',

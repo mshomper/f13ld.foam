@@ -12,11 +12,11 @@ Live: https://mshomper.github.io/f13ld.foam
   - *Symmetric stochastic* (v0.6.0): random Poisson-disk seeds with mirror symmetry in x, y, z (orthotropic stiffness) or full cubic symmetry (mirrors + axis swaps, cubic stiffness), relaxed on exact cells.
   - *Lattices:* Weaire–Phelan, Kelvin, FCC (rhombic dodecahedra) and C15 Laves (Frank–Kasper, 16- and 12-faced cells), down to a single cube, with a **disorder** slider (Gaussian nudge, σ as a fraction of the mean spacing).
 - **Structure factor S(k)** (v0.6.0): live plot of the seeds' S(k) over the cube's own wave vectors; a dip toward 0 at long wavelengths marks a hyperuniform layout.
-- **Topology**: open (struts on cell edges), closed (walls on cell faces), plateau (struts with swollen junctions), and **wet** (v0.6.0): true Plateau borders — each cell rounded off by a border radius, the solid being what's left between the rounded cells (concave triangular struts, tetrahedral nodes).
+- **Topology**: open (struts on cell edges), closed (walls on cell faces), plateau (struts with swollen junctions), and **wet** (v0.6.0): true Plateau borders — each cell rounded off by a border radius, the solid being what's left between the rounded cells (concave triangular struts, tetrahedral nodes). An **edge** width (v0.7.0) trims the knife-edge cusp tips: wherever two bubbles come closer than it, the gap closes and the tip is rounded, so cusps stay meshable and printable.
 - **Fillet and node** (v0.6.0, replacing organic): a circular blend radius where neighbouring struts (or walls) meet, and an optional sphere at every node, blended the same way. Mid-span thickness is unchanged.
 - **Exact field** (v0.6.0): the field is the true distance to the nearest cell wall (closed) or cell edge (open, plateau), from the bisector planes of the 8 nearest seeds, searched over the seeds' periodic copies. Walls are 2t thick and struts 2t across everywhere — near nodes, with stretch on, and in tiles of only a few cells. It replaces v0.5.0's gradient normalization (and its toggle), whose struts ran up to a third thicker near nodes.
 - **Anisotropy**: stretches the distance metric per axis for elongated, load-aligned cells.
-- **Preview**: GPU bake of the exact wall and edge distances per voxel (same construction as the export field, matched to half-float rounding), raymarched with guaranteed-safe step lengths; clip plane, 3×3×3 tile check, mm read-outs. Thickness and plateau k stay live; seed, stretch, fillet, node and border changes re-bake. The two-size mix and symmetric seeds are generated in a worker, and the bake waits for them.
+- **Preview**: GPU bake of the exact wall and edge distances per voxel (same construction as the export field, matched to half-float rounding), raymarched with guaranteed-safe step lengths; clip plane, 3×3×3 tile check, mm read-outs. Thickness and plateau k stay live; seed, stretch, fillet, node, border and edge changes re-bake. The two-size mix and symmetric seeds are generated in a worker, and the bake waits for them.
 - **Solid fraction** (v0.4.0): live read-out under the equation, sampled at 48³ from the exact field F13LD.mesh exports and F13LD.lab homogenizes (shown with ≈ for bounded foams, whose faces don't wrap).
 
 ## Stiffness estimate (v0.5.0)
@@ -52,11 +52,11 @@ Each value comes with a likely range (fit scatter, seed-to-seed scatter at this 
                 "weights": [w, …] },            // two-size mix only
   "anisotropy": { "enabled", "stretch": [sx, sy, sz] },
   "geometry": { "mode": "open|closed|plateau|wet", "thickness", "plateau_k",
-                "fillet", "node", "border", "organic": 0, "normalize": true,
+                "fillet", "node", "border", "edge_min", "organic": 0, "normalize": true,
                 "field": 2, "tile_mm" } }
 ```
 
-`tile_mm` is the cube edge at the cell size set in the tool; mesh uses it as the default cell size. `field: 2` selects the exact field (v0.6.0+); recipes without it build with the original field in mesh and the lab. `weights` are power-cell weights (seed i owns the points where |p − sᵢ|² − wᵢ is smallest). `border` is the wet-foam border radius; `fillet` and `node` apply to the other topologies.
+`tile_mm` is the cube edge at the cell size set in the tool; mesh uses it as the default cell size. `field: 2` selects the exact field (v0.6.0+); recipes without it build with the original field in mesh and the lab. `weights` are power-cell weights (seed i owns the points where |p − sᵢ|² − wᵢ is smallest). `border` is the wet-foam border radius and `edge_min` its minimum edge width (v0.7.0; absent or 0 = sharp cusps, as before); `fillet` and `node` apply to the other topologies.
 
 ## Shared code
 
