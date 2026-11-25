@@ -2,218 +2,325 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>F13LD.foam — discrete cellular scaffolds</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* ── Palette ─────────────────────────────────────────────────────────────
-   Suite neutrals (ground, panels, borders, text) are shared with every F13LD
-   tool. Foam's own identity is the bone/ivory accent; the suite jade + lime
-   appear only where they do in every tool (brand mark, mesh handoff, axes). */
+/* ============================================================================
+   F13LD UI shell (template shell.css, from F13LD.tpms v1.4.0).
+   Tokens, two-pane desktop / bottom-sheet phone, sections, control rows, viewer overlays, shared header.
+   Lines marked PER-TOOL carry foam's values; everything else is identical across tools.
+   ========================================================================== */
+/* ── Tokens (OKLCH). Depth comes from lighter surfaces: bg < panel < card < input. ── */
 :root{
-  --bg:#06080f;
-  --panel:#111118;
-  --card:#0e0e1a;
-  --field:#1a1a2e;
-  --border:#2a2a3a;
-  --border2:#3a3a5a;
-  --text:#e0e0ff;
-  --dim:#888;
-  --dimmer:#555;
-  --dimmest:#444;
-  --accent:#E8D4A2;        /* foam ivory */
-  --accent-mid:#C9B27E;
-  --accent-deep:#8B6F3E;
-  --accent-dark:#3a2a14;
-  --accent-soft:#1a1408;
-  --jade:#1D9E75;          /* suite */
-  --lime:#c8f542;          /* suite */
-  --xc:#22d3ee;
-  --yc:#e879f9;
-  --zc:#facc15;
-  --good:#69f0ae;
-  --warn:#f0b35b;
+  --bg:oklch(0.13 0.012 265);
+  --panel:oklch(0.17 0.014 265);
+  --card:oklch(0.215 0.016 265);
+  --input:oklch(0.255 0.018 265);
+  --hair:oklch(1 0 0 / 0.09);
+  --hair-strong:oklch(1 0 0 / 0.17);
+  --ink:oklch(0.95 0.01 265);          /* 16.5:1 on panel */
+  --ink-dim:oklch(0.75 0.018 265);     /* 8.6:1 on panel  */
+  --ink-faint:oklch(0.60 0.018 265);   /* 4.8:1 on panel  */
+  /* ── PER-TOOL: foam sand (#E8D4A2). Chroma is about half the kit palette; kept exactly (decision D1). ── */
+  --accent:oklch(0.874 0.069 89);      /* sand #E8D4A2 */
+  --accent-ink:oklch(0.22 0.04 85);    /* dark text on the accent */
+  --accent-soft:oklch(0.874 0.069 89 / 0.14);
+  --accent-line:oklch(0.874 0.069 89 / 0.45);
+  --family:oklch(0.76 0.08 85);        /* tool-name colour in the header (sand, deeper), wordmark only */
+  --axis-x:oklch(0.797 0.134 211.5);   /* #22d3ee */
+  --axis-y:oklch(0.748 0.207 322.2);   /* #e879f9 */
+  --axis-z:oklch(0.861 0.173 91.9);    /* #facc15 */
+  --shear:oklch(0.76 0.12 290);        /* shear moduli (G) tint */
+  --warn:oklch(0.807 0.126 74.3);
+  --danger:oklch(0.68 0.19 25);
+  --lq-ink:var(--ink);--lq-ink-dim:var(--ink-dim);--lq-ink-faint:var(--ink-faint);
+  --lq-font:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --lq-mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --hdr-h:48px;
+  --pane-w:clamp(400px,30vw,440px);
+  --rail-w:56px;
+  --peek:45dvh;
+  --full:88dvh;
+  --ease:cubic-bezier(.4,0,.2,1);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:'Exo 2',system-ui,sans-serif}
-#wrap{max-width:1100px;margin:0 auto;padding:20px 16px}
+html,body{height:100%;background:var(--bg);color:var(--ink);font:400 13px/1.45 var(--lq-font);overflow:hidden;-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.ic{width:16px;height:16px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;display:block}
+.ic.sm{width:14px;height:14px}
+/* 44px hit areas: the drawn element may be smaller; ::after carries the hit box */
+.hit{position:relative}
+.hit::after{content:'';position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
 
-/* ── Unified F13LD header (same structure as F13LD.tpms) ── */
-.f13ld-header{display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-bottom:0.5px solid #1a2a1a;padding:0 14px;height:48px;flex-shrink:0;font-family:'Exo 2',system-ui,sans-serif}
+/* ── Shell ── */
+#app{height:100dvh;display:flex;flex-direction:column}
+#main{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) var(--pane-w)}
+#viewPane{position:relative;min-width:0;min-height:0}
+#cw{position:absolute;inset:0;background:var(--bg);overflow:hidden}
+canvas#c{display:block;width:100%;height:100%;touch-action:none}
+#axisCanvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:12}
+#ctrlPane{position:relative;min-height:0;min-width:0;display:grid;grid-template-columns:var(--rail-w) minmax(0,1fr);background:var(--panel);border-left:1px solid var(--hair)}
+#sectionsRail{grid-column:1;grid-row:1;min-height:0;position:relative}
+/* one section at a time; the column scrolls only if that section is taller than it.
+   Edges fade only where content is hidden (.ft / .fb set by the layout script). */
+#ctrlScroll{grid-column:2;grid-row:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;--ft:0px;--fb:0px;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 var(--ft),#000 calc(100% - var(--fb)),transparent 100%);
+          mask-image:linear-gradient(to bottom,transparent 0,#000 var(--ft),#000 calc(100% - var(--fb)),transparent 100%)}
+#ctrlScroll.ft{--ft:20px}
+#ctrlScroll.fb{--fb:28px}
+#sheetHandle,#sectionsBar{display:none}
+
+/* ── Sections ── */
+.sec{display:none;padding:20px 16px 32px 4px;min-width:0}
+.sec.on{display:block}
+.sec-h{display:flex;align-items:baseline;gap:8px;font-size:15px;font-weight:600;color:var(--ink);letter-spacing:0.01em;margin-bottom:14px}
+.sec-h .sec-n{font:500 11px/1 var(--lq-mono);color:var(--ink-faint)}
+.sub-h{font-size:11px;font-weight:600;color:var(--ink-faint);text-transform:uppercase;letter-spacing:0.08em;margin:14px 0 6px;display:flex;align-items:center}
+
+/* ── Control rows (help system ROW_SEL = .sc-group) ── */
+.sc-group{display:flex;align-items:center;gap:8px;min-width:0}
+.sc-group>label,.lbl{font-size:13px;color:var(--ink-dim);white-space:nowrap;display:inline-flex;align-items:center}
+.sc-group .sv{font:500 13px/1 var(--lq-mono);color:var(--ink);font-variant-numeric:tabular-nums;text-align:right;min-width:44px}
+.mm-hint{font:400 11px/1 var(--lq-mono);color:var(--ink-faint);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mm-hint.show{color:var(--ink-faint)}
+/* slider row: label · mm hint · value on top, full-width slider beneath */
+.sl{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;column-gap:8px;margin:2px 0 4px}
+.sl>label{grid-column:1;grid-row:1}
+.sl>.mm-hint{grid-column:2;grid-row:1;justify-self:end}
+.sl>.sv{grid-column:3;grid-row:1}
+.sl>input[type=range]{grid-column:1/-1;grid-row:2}
+.sl>.row-extra{grid-column:1/-1;grid-row:3}
+input[type=range]{width:100%;height:44px;margin:0;accent-color:var(--accent);background:transparent;cursor:pointer;touch-action:pan-y}
+/* text / number / select fields */
+.fld,.fld-num,select.fld{
+  height:44px;min-width:44px;padding:0 10px;background:var(--input);border:1px solid transparent;border-radius:10px;color:var(--ink);
+  font:400 13px var(--lq-font);outline:none;transition:border-color .15s var(--ease)}
+.fld-num{font-family:var(--lq-mono);text-align:center;font-variant-numeric:tabular-nums;-moz-appearance:textfield;appearance:textfield}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.fld:focus,.fld-num:focus{border-color:var(--accent-line)}
+select{cursor:pointer}
+.unit{font-size:13px;color:var(--ink-faint)}
+
+/* ── Switch (normalize, term on/off) ── */
+.sw{display:inline-flex;align-items:center;gap:8px;min-height:44px;background:none;border:0;padding:0 2px;color:var(--ink-dim);font-size:13px;white-space:nowrap}
+.sw-t{position:relative;width:30px;height:18px;border-radius:9px;background:var(--input);box-shadow:inset 0 0 0 1px var(--hair-strong);transition:background .18s var(--ease);flex:0 0 auto}
+.sw-t::after{content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:var(--ink-faint);transition:transform .18s var(--ease),background .18s var(--ease)}
+.sw.on .sw-t{background:var(--accent);box-shadow:none}
+.sw.on .sw-t::after{transform:translateX(12px);background:var(--accent-ink)}
+.sw:focus-visible{outline:2px solid var(--accent-line);outline-offset:2px;border-radius:8px}
+
+
+/* ── Viewer overlays ── */
+.vw-bl{position:absolute;left:10px;bottom:10px;z-index:14;display:flex;align-items:center;gap:6px}
+#clipOverlay{display:flex;align-items:center;gap:2px;padding:0 4px 0 10px;height:40px;background:oklch(0.13 0.012 265 / 0.82);border:1px solid var(--hair);border-radius:12px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.clip-lbl{font-size:11px;color:var(--ink-faint);margin-right:4px}
+.clip-pill{width:36px;height:30px;display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--ink-dim);border:1px solid transparent;border-radius:8px;font:600 13px/1 var(--lq-font);transition:color .15s var(--ease),border-color .15s var(--ease),background .15s var(--ease)}
+.clip-pill:hover{color:var(--ink)}
+.clip-pill.active{background:oklch(1 0 0 / 0.06)}
+#cw .f13v{top:10px;left:10px}
+#cw .f13v>button{display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 12px;font:500 13px var(--lq-font);color:var(--ink-dim);background:oklch(0.13 0.012 265 / 0.82);border:1px solid var(--hair);border-radius:12px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+#cw .f13v>button:hover,#cw .f13v>button[aria-expanded=true]{color:var(--ink);border-color:var(--hair-strong)}
+#cw .f13v-p{background:oklch(0.17 0.014 265 / 0.95);border:1px solid var(--hair);border-radius:12px;padding:6px 12px 8px 10px;font:400 13px var(--lq-font)}
+#cw .f13v-p label{font-size:13px;color:var(--ink);min-height:36px}
+#cw .f13v-p input{width:16px;height:16px;accent-color:var(--accent)}
+#cw .f13v-p .f13v-r{font:400 13px var(--lq-font);color:var(--ink-dim);border:1px solid var(--hair-strong);border-radius:8px;padding:6px 12px}
+
+/* ── Header (shared F13LD markup, restyled to tokens) ── */
+.f13ld-header{display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-bottom:1px solid var(--hair);padding:0 14px;padding-top:env(safe-area-inset-top);min-height:48px;flex:0 0 auto;font-family:'Exo 2',system-ui,sans-serif;position:relative;z-index:60}
 .fh-left{display:flex;align-items:center;gap:10px}
 .fh-brand{display:flex;align-items:center;gap:8px;text-decoration:none}
 .fh-wordmark{font-size:17px;font-weight:700;letter-spacing:0.1em;line-height:1}
-.fh-divider{width:0.5px;height:24px;background:#1a2a1a}
-.fh-tool-name{font-size:15px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;line-height:1;color:var(--accent-deep)}
-.fh-right{display:flex;align-items:center;gap:10px}
-.fh-version{font-size:10px;color:#3a3324;letter-spacing:0.1em;font-family:'Exo 2',system-ui,sans-serif}
-.fh-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#F3EBD8}
-.fh-mesh-btn{font-size:11px;padding:4px 12px;border:0.5px solid var(--jade);border-radius:20px;background:rgba(29,158,117,0.08);color:var(--jade);cursor:pointer;font-family:inherit;font-weight:600;white-space:nowrap;transition:background 0.15s}
-.fh-mesh-btn:hover{background:rgba(29,158,117,0.18)}
-/* ── Header handoff buttons (same in every F13LD design tool) ──
-   Short labels so they fit on phones; each tooltip carries the full name.
-   Queue's ▾ (pick which queue) is joined to the Queue pill as one split control. */
+.fh-divider{width:1px;height:24px;background:var(--hair)}
+.fh-tool-name{font-size:15px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;line-height:1;color:var(--family)}
+.fh-right{display:flex;align-items:center;gap:8px}
+.fh-version{font-size:11px;color:var(--ink-faint);letter-spacing:0.08em;font-family:'Exo 2',system-ui,sans-serif}
+.fh-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.fh-mesh-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--hair-strong);border-radius:999px;background:var(--card);color:var(--ink-dim);font:500 13px var(--lq-font);white-space:nowrap;transition:color .15s var(--ease),border-color .15s var(--ease),background .15s var(--ease)}
+.fh-mesh-btn:hover{color:var(--ink);border-color:var(--ink-faint)}
+.fh-mesh-btn::after{content:'';position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
+/* Queue button comes from the external queue client: its icon is a drawn SVG mask, so it survives text changes */
+.f13ldq-main::before,#f13ldq-fallback::before{content:'';width:16px;height:16px;flex:0 0 auto;background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M2.5 4h8M2.5 8h8M2.5 12h4.5M12.5 9.5v5M10 12h5'/%3E%3C/svg%3E") center/16px 16px no-repeat;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M2.5 4h8M2.5 8h8M2.5 12h4.5M12.5 9.5v5M10 12h5'/%3E%3C/svg%3E") center/16px 16px no-repeat}
 .fh-right .f13ldq-split{gap:0}
-.fh-right .f13ldq-split .f13ldq-main{border-radius:20px 0 0 20px;border-right:none;padding-right:9px}
-.fh-right .f13ldq-split .f13ldq-caret{border-radius:0 20px 20px 0;padding-left:7px;padding-right:8px;border-left:0.5px solid rgba(29,158,117,0.4)}
-/* Phones: brand + help/version/icon on the top row; Queue, Mesh and Lab share
+.fh-right .f13ldq-split .f13ldq-main{border-radius:999px 0 0 999px;border-right:none;padding-right:9px}
+.fh-right .f13ldq-split .f13ldq-caret{border-radius:0 999px 999px 0;padding-left:8px;padding-right:9px;border-left:1px solid var(--hair-strong);font-size:0}
+.fh-right .f13ldq-split .f13ldq-caret::before{content:'';width:12px;height:12px;background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E") center/12px 12px no-repeat;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E") center/12px 12px no-repeat}
+.hdr-msg{position:absolute;right:12px;top:calc(100% + 8px);max-width:min(340px,calc(100vw - 24px));padding:10px 12px;background:var(--card);border:1px solid var(--hair-strong);border-radius:12px;color:var(--ink);font:400 13px/1.45 var(--lq-font);box-shadow:0 8px 24px oklch(0 0 0 / 0.4);z-index:70}
+.hdr-msg[hidden]{display:none}
+/* help system (engine untouched): bigger hit areas and type ≥ 11px, tool-side */
+.f13ld-header .f13h-trigger{position:relative;width:32px;height:32px;font-size:15px;border:1px solid var(--hair-strong);color:var(--ink-dim)}
+.f13ld-header .f13h-trigger::after{content:'';position:absolute;inset:-7px}
+body .f13h-i{position:relative;width:18px;height:18px;font-size:11px;border-width:1px}
+body .f13h-i::after{content:'';position:absolute;inset:-14px}
+body .f13h-head h2 span,body .f13h-range,body .f13h-section-t,body .f13h-tut{font-size:11px}
+body .f13h-tag{font-size:11px;width:44px;letter-spacing:0.04em}
+body .f13h-line{font-size:13px}
+body .f13h-intro{font-size:13px}
+body .f13h-name{font-size:13px}
+body .f13h-close{width:44px;height:44px}
+/* help: "show" jumps from a drawer card to its control */
+.f13w-show{position:relative;margin-left:auto;display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border:1px solid var(--hair-strong);border-radius:999px;background:none;color:var(--ink-dim);font:500 11px var(--lq-font);cursor:pointer}
+.f13w-show::after{content:'';position:absolute;left:50%;top:50%;width:max(100%,44px);height:44px;transform:translate(-50%,-50%)}
+.f13w-show:hover{color:var(--accent);border-color:var(--accent-line)}
+.f13w-flash{border-radius:12px;animation:f13wFlash 1.4s var(--ease)}
+@keyframes f13wFlash{0%,60%{box-shadow:0 0 0 2px var(--accent-line),0 0 0 6px var(--accent-soft)}100%{box-shadow:0 0 0 0 transparent}}
+
+/* Phones (header): brand + help/version/icon on the top row; Queue, Mesh and Lab share
    one row underneath (the ::after is a zero-height line break between them). */
 @media (max-width:560px){
-  .f13ld-header{flex-wrap:wrap;height:auto;padding:8px 12px 10px;row-gap:0;column-gap:8px}
+  .f13ld-header{flex-wrap:wrap;padding:8px 12px 10px;padding-top:calc(8px + env(safe-area-inset-top));row-gap:0;column-gap:8px}
   .f13ld-header::after{content:'';order:1;flex:0 0 100%;height:0}
   .fh-right{display:contents}
   .fh-left{order:0;margin-right:auto}
-  .f13ld-header .f13h-trigger,.fh-version,.fh-icon{order:1}
+  .f13ld-header .f13h-trigger,.fh-version,.fh-icon,#w-recipe{order:1}
   .fh-right .fh-mesh-btn,.fh-right .f13ldq-split{order:2;margin-top:8px}
-  .fh-mesh-btn{flex:1 1 0;min-width:0;text-align:center;padding:7px 6px}
+  .fh-mesh-btn{flex:1 1 0;min-width:0;height:36px;padding:0 6px}
   .fh-right .f13ldq-split{flex:1.4 1 0;min-width:0;display:flex}
   .fh-right .f13ldq-split .f13ldq-main{flex:1 1 0;margin-top:0}
-  .fh-right .f13ldq-split .f13ldq-caret{flex:0 0 26px;padding:7px 0;margin-top:0}
+  .fh-right .f13ldq-split .f13ldq-caret{flex:0 0 30px;padding:0;margin-top:0}
 }
 
-/* ── Viewport ── */
-#cw{position:relative;background:var(--bg);border-radius:12px 12px 0 0;overflow:hidden;border:0.5px solid var(--border);margin-top:10px}
-canvas#c{display:block;width:100%;touch-action:none}
-#axisCanvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:12}
-
-.ovl-btn{
-  background:rgba(6,8,15,0.85);color:var(--dimmer);border:0.5px solid var(--border);
-  border-radius:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:3px 8px;cursor:pointer;
-  transition:color 0.15s,border-color 0.15s;letter-spacing:0.02em
+/* ── Phone / narrow (< 900px): viewer on top, controls in a draggable bottom sheet ── */
+@media (max-width:899px){
+  #main{display:block;position:relative}
+  #viewPane{height:calc(100dvh - var(--hdr-h) - var(--peek))}
+  #ctrlPane{position:fixed;left:0;right:0;bottom:0;z-index:50;height:var(--sheet-h,var(--peek));max-height:calc(100dvh - var(--hdr-h));
+    display:flex;flex-direction:column;border-left:none;border-radius:18px 18px 0 0;
+    box-shadow:0 -1px 0 var(--hair-strong),0 -12px 32px oklch(0 0 0 / 0.35);transition:height .26s var(--ease)}
+  #ctrlPane.dragging{transition:none}
+  #sectionsRail{display:none}
+  #sheetHandle{display:flex;flex:0 0 22px;align-items:center;justify-content:center;position:relative;touch-action:none;cursor:grab;background:none;border:0;width:100%}
+  #sheetHandle::before{content:'';width:36px;height:4px;border-radius:2px;background:var(--hair-strong)}
+  #sheetHandle::after{content:'';position:absolute;left:0;right:0;top:-12px;bottom:-10px}
+  #ctrlScroll{flex:1 1 auto;padding:0 16px}
+  .sec{padding:6px 0 20px}
+  #sectionsBar{display:block;flex:0 0 auto;border-top:1px solid var(--hair);padding-bottom:env(safe-area-inset-bottom);background:var(--panel)}
 }
-.ovl-btn.active{color:var(--accent);border-color:var(--accent)}
-#qualityOverlay{position:absolute;bottom:10px;left:10px;display:flex;gap:4px;z-index:13}
-#clipOverlay{position:absolute;bottom:44px;left:10px;display:flex;gap:6px;z-index:13}
-.clip-pill{background:rgba(6,8,15,0.85);color:var(--dimmer);border:0.5px solid var(--border);border-radius:5px;font-size:11px;font-weight:600;letter-spacing:0.04em;padding:4px 9px;cursor:pointer;transition:color 0.15s,border-color 0.15s;font-family:inherit;line-height:1}
-#seedsOverlay{position:absolute;top:10px;left:10px;display:flex;gap:4px;z-index:13}
-#seedsOverlay .count{color:var(--accent-deep);margin-left:3px;font-variant-numeric:tabular-nums}
-#seedsOverlay .ovl-btn.active .count{color:var(--accent)}
-#bakeInfo{
-  position:absolute;bottom:10px;right:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;
-  color:var(--accent-deep);background:rgba(6,8,15,0.85);padding:3px 8px;border-radius:5px;
-  border:0.5px solid var(--accent-dark);z-index:13;letter-spacing:0.04em;max-width:60%;text-align:right
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:0s !important;animation-duration:0s !important}
 }
-#bakeInfo.err{color:var(--warn);border-color:#5a4214}
+/* fallback section tabs in #sectionsBar (the liquid tab bar replaces .sb-fallback; also the no-WebGL path) */
+.sb-fallback{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+.sb-fallback button{min-height:52px;background:none;border:0;color:var(--ink-faint);font-size:13px;font-weight:500}
+.sb-fallback button.on{color:var(--accent)}
 
-/* ── Panel ── */
-#panel{background:var(--panel);border:0.5px solid var(--border);border-top:none;border-radius:0 0 12px 12px;padding:12px 14px}
-.section-label{font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:0.12em;font-weight:500}
-
-#eqbar-wrap{margin-bottom:10px}
-#eqbar-label{margin-bottom:4px}
-#eqbar{font-family:'IBM Plex Mono',monospace;font-size:13px;color:#aaa;padding:9px 12px;background:#0c0a06;border:0.5px solid var(--accent-deep);border-radius:8px;line-height:1.9;word-break:break-word;min-height:36px;box-shadow:0 0 12px rgba(232,212,162,0.06)}
-#eqbar b{color:var(--text);font-weight:500}
-#eqbar .eq-note{color:#6f6553;font-size:11px}
-
-.mode-strip{display:flex;gap:4px}
-.mode-btn{
-  font-family:'Exo 2',system-ui,sans-serif;font-size:11px;font-weight:500;padding:3px 11px;
-  border:0.5px solid var(--border2);border-radius:20px;background:transparent;color:var(--dim);
-  cursor:pointer;transition:all 0.15s
-}
-.mode-btn.active{background:var(--accent);color:var(--accent-soft);border-color:var(--accent);font-weight:600}
-.mode-btn:hover:not(.active){border-color:var(--accent-deep);color:var(--accent)}
-
-.surf-controls{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-bottom:8px}
-.sc-group{display:flex;align-items:center;gap:6px}
-.sc-group label{font-size:12px;color:var(--dim);white-space:nowrap}
-.sc-group input[type=range]{width:88px;accent-color:var(--accent)}
-.sc-group .sv{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;color:var(--text);min-width:36px;font-variant-numeric:tabular-nums}
-.mm-hint{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dimmest);font-variant-numeric:tabular-nums;margin-left:2px;white-space:nowrap}
-.mm-hint.show{color:#8a7d62}
+/* ============================================================================
+   Foam (per-tool)
+   ========================================================================== */
 .sc-group.hidden{display:none !important}
-#sk-wrap{margin-top:10px}
-#sk-wrap .sk-head{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--dim);font-family:'IBM Plex Mono',monospace;margin-bottom:4px}
+/* desktop: until the liquid rail replaces them, the fallback section tabs stand in the rail column */
+@media (min-width:900px){
+  #sectionsBar{display:block;grid-column:1;grid-row:1;min-width:0;padding-top:12px}
+  .sb-fallback{grid-auto-flow:row;grid-auto-columns:auto}
+  .sb-fallback button{width:100%;min-height:48px;padding:0 2px;font-size:11px}
+  .sb-fallback button.on{box-shadow:inset 2px 0 0 var(--accent)}
+}
+sub,sup{font-size:11px;line-height:0}   /* subscripts stay at the 11 px floor */
+.sec .sc-group:not(.sl){margin:2px 0 10px}
+.sc-group>.sw{margin-left:auto}
+.sc-group>label.lbl-w{min-width:72px}
+/* seeds */
+#grp-seedmode select{flex:1;min-width:0}
+#grp-cellsize .fld-num{width:84px}
+#grp-rng .fld-num{width:84px}
+.act-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:44px;padding:0 14px;border:1px solid var(--hair-strong);border-radius:12px;background:none;color:var(--ink-dim);font:500 13px var(--lq-font);transition:color .15s var(--ease),border-color .15s var(--ease)}
+.act-btn:hover{color:var(--accent);border-color:var(--accent-line)}
+#sk-wrap{margin-top:6px;padding:10px 12px;background:var(--card);border-radius:12px}
+.sk-head{display:flex;justify-content:space-between;align-items:center;gap:8px;font:400 11px/1.4 var(--lq-mono);color:var(--ink-faint);margin-bottom:6px}
+.sk-head>span{display:inline-flex;align-items:center;min-width:0}
+#skNote{text-align:right}
 #skCanvas{width:100%;height:90px;display:block}
-
-.cellsize-inp,.num-inp{
-  width:54px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:2px 4px;
-  background:var(--field);border:0.5px solid var(--border2);border-radius:5px;color:var(--text);text-align:center
-}
-.num-inp{width:62px}
-
-.pill-toggle{
-  font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 9px;border:0.5px solid var(--border2);
-  border-radius:14px;background:transparent;color:var(--dim);cursor:pointer;
-  transition:all 0.15s;letter-spacing:0.02em
-}
-.pill-toggle.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-deep)}
-.pill-toggle:hover{border-color:var(--accent-deep)}
-
-.divider{border:none;border-top:0.5px solid var(--border);margin:10px 0}
-.section-header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-
-select.preset-sel{
-  width:100%;font-family:'Exo 2',system-ui,sans-serif;font-size:12px;padding:5px 9px;margin-top:6px;
-  border:0.5px solid var(--border2);border-radius:6px;background:var(--card);color:#bbb;cursor:pointer
-}
-select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
-
-.aniso-row{display:flex;align-items:center;gap:14px;margin-top:8px;flex-wrap:wrap}
+#sk-wrap.off #skCanvas{display:none}
+#sk-wrap.off .sk-head{margin-bottom:0}
+/* structure */
+#eqbar{font:400 13px/1.7 var(--lq-mono);color:var(--ink-dim);padding:10px 12px;background:var(--card);border-radius:12px;word-break:break-word;min-height:44px}
+#eqbar b{color:var(--ink);font-weight:500}
+#eqbar .eq-note{color:var(--ink-faint);font-size:11px}
+#eqbar-wrap{margin-bottom:6px}
+#grp-topo>label{min-width:60px}
+.mode-strip{flex:1;min-width:0;display:flex;gap:2px;padding:3px;background:var(--input);border-radius:13px}
+.mode-btn{position:relative;flex:1 1 0;min-width:0;height:38px;padding:0 6px;border:0;border-radius:10px;background:transparent;color:var(--ink-dim);font-size:13px;font-weight:500;white-space:nowrap;transition:background .18s var(--ease),color .18s var(--ease)}
+.mode-btn::after{content:'';position:absolute;left:0;right:0;top:-3px;bottom:-3px}
+.mode-btn:hover{color:var(--ink)}
+.mode-btn.active{background:var(--accent);color:var(--accent-ink)}
+#vsEdge_warn{color:var(--warn)}
+/* stretch: label · slider · value on one line, axis tints */
+.aniso-row{margin-top:4px}
 .aniso-row.disabled{opacity:0.35;pointer-events:none}
-.aniso-axis{display:flex;align-items:center;gap:6px}
-.aniso-axis .axis-lbl{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;width:12px;text-align:center}
-.aniso-axis.x .axis-lbl{color:var(--xc)}
-.aniso-axis.y .axis-lbl{color:var(--yc)}
-.aniso-axis.z .axis-lbl{color:var(--zc)}
-.aniso-axis input[type=range]{width:72px}
-.aniso-axis.x input{accent-color:var(--xc)}
-.aniso-axis.y input{accent-color:var(--yc)}
-.aniso-axis.z input{accent-color:var(--zc)}
-.aniso-axis .sv{min-width:34px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text);font-variant-numeric:tabular-nums}
-
-.reseed-btn{
-  font-family:'Exo 2',system-ui,sans-serif;font-size:11px;padding:3px 10px;border:0.5px solid var(--border2);
-  border-radius:20px;background:transparent;color:var(--dim);cursor:pointer;transition:all 0.15s
-}
-.reseed-btn:hover{color:var(--accent);border-color:var(--accent-deep)}
-
-#exportBtn{width:100%;margin-top:8px;font-family:inherit;font-size:12px;padding:6px 14px;border:0.5px solid var(--border2);border-radius:20px;background:transparent;color:var(--dim);cursor:pointer;transition:all 0.15s}
-#exportBtn:hover{color:var(--text);border-color:var(--accent-deep)}
-#footer{font-size:11px;color:var(--dimmest);margin-top:7px}
-#meshWarn{display:none;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding:7px 10px;font-size:12px;line-height:1.5;color:var(--warn);background:rgba(240,179,91,0.07);border:0.5px solid #5a4214;border-radius:8px}
+.aniso-row .sl{grid-template-columns:20px minmax(0,1fr) 52px;margin:0}
+.aniso-row .sl>label{font:600 13px var(--lq-mono)}
+.aniso-row .sl>input[type=range]{grid-column:2;grid-row:1}
+#grp-ax>label{color:var(--axis-x)} #grp-ay>label{color:var(--axis-y)} #grp-az>label{color:var(--axis-z)}
+#sAnisoX{accent-color:var(--axis-x)} #sAnisoY{accent-color:var(--axis-y)} #sAnisoZ{accent-color:var(--axis-z)}
+/* viewer: seeds / tile at top right, quality + bake read-out bottom right */
+.vw-tr{position:absolute;right:10px;top:10px;z-index:14;display:flex;gap:6px}
+.vw-br{position:absolute;right:10px;bottom:10px;z-index:14;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:calc(100% - 20px)}
+.ovl-btn{position:relative;display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 12px;background:oklch(0.13 0.012 265 / 0.82);border:1px solid var(--hair);border-radius:12px;color:var(--ink-dim);font:500 13px var(--lq-font);white-space:nowrap;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:color .15s var(--ease),border-color .15s var(--ease)}
+.ovl-btn:hover{color:var(--ink);border-color:var(--hair-strong)}
+.ovl-btn.active{color:var(--accent);border-color:var(--accent-line)}
+.ovl-btn .count{font:500 13px var(--lq-mono);color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.ovl-btn.active .count{color:var(--accent)}
+#qualityOverlay{display:flex;align-items:center;gap:2px;padding:0 4px;height:40px;background:oklch(0.13 0.012 265 / 0.82);border:1px solid var(--hair);border-radius:12px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+#qualityOverlay .ovl-btn{height:30px;padding:0 9px;background:transparent;border:1px solid transparent;border-radius:8px;-webkit-backdrop-filter:none;backdrop-filter:none}
+#qualityOverlay .ovl-btn.active{background:oklch(1 0 0 / 0.06);color:var(--accent)}
+#bakeInfo{font:400 11px/1.4 var(--lq-mono);color:var(--ink-dim);background:oklch(0.13 0.012 265 / 0.82);padding:5px 10px;border-radius:10px;border:1px solid var(--hair);letter-spacing:0.02em;max-width:100%;text-align:right;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+#bakeInfo.err{color:var(--warn)}
+#meshWarn{display:none;position:absolute;left:10px;right:10px;top:64px;z-index:16;align-items:center;gap:6px 10px;flex-wrap:wrap;padding:10px 12px;font-size:13px;line-height:1.45;color:var(--ink);background:oklch(0.17 0.014 265 / 0.95);border:1px solid var(--hair-strong);border-radius:12px;box-shadow:0 8px 24px oklch(0 0 0 / 0.4);max-width:520px}
 #meshWarn.show{display:flex}
-#meshWarn span{flex:1 1 260px}
-#meshWarn .mw-close{background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;line-height:1}
-
-/* ── Stiffness estimate (v0.5.0) ── */
-.homo-controls{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:8px 0}
-.homo-controls label{font-size:12px;color:var(--dim);display:flex;align-items:center;gap:5px}
-#runBtn{font-family:inherit;font-size:12px;font-weight:600;padding:4px 14px;border:0.5px solid var(--accent-deep);border-radius:20px;background:var(--accent-soft);color:var(--accent);cursor:pointer;transition:all 0.15s}
-#runBtn:hover{background:var(--accent-dark)}
-#runBtn:disabled{opacity:0.5;cursor:default}
-#homo-status{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--dimmer)}
+#meshWarn>.ic{color:var(--warn);width:18px;height:18px}
+#meshWarn>span{flex:1 1 200px;min-width:0}
+#meshWarn .mw-fix{position:relative;display:inline-flex;align-items:center;height:32px;padding:0 12px;border:1px solid var(--accent-line);border-radius:999px;background:var(--accent-soft);color:var(--accent);font:500 13px var(--lq-font)}
+#meshWarn .mw-fix::after{content:'';position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
+#meshWarn .mw-close{position:relative;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;background:none;border:0;color:var(--ink-dim);border-radius:8px}
+#meshWarn .mw-close::after{content:'';position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%)}
+/* analyze */
+.homo-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.homo-controls .sc-group{flex-direction:column;align-items:stretch;gap:4px;margin:0}
+.homo-controls .sc-group>label{font-size:11px;color:var(--ink-faint)}
+.homo-controls input[type=number]{width:100%}
+#runBtn{width:100%;height:44px;border:0;border-radius:12px;background:var(--accent);color:var(--accent-ink);font-size:15px;font-weight:600;transition:filter .15s var(--ease),transform .1s var(--ease)}
+#runBtn:hover{filter:brightness(1.06)}
+#runBtn:active{transform:scale(0.985)}
+#runBtn:disabled{opacity:0.55;cursor:default;transform:none}
+#homo-status{font:400 11px/1.4 var(--lq-mono);color:var(--ink-dim);margin:8px 0;min-height:15px}
 #homo-results{display:none}
-#homo-results.stale{opacity:0.35;pointer-events:none}
-.homo-method{font-size:11.5px;line-height:1.55;margin:2px 0 8px;padding:7px 10px;border-radius:6px;border:0.5px solid var(--border);background:var(--card);color:#b9b3a4}
+.homo-method{font-size:13px;line-height:1.5;margin:2px 0 10px;padding:8px 10px;border-radius:10px;background:var(--card);color:var(--ink-dim)}
 .homo-method b{font-weight:600}
-.homo-method.cal{border-color:var(--accent-deep);background:#110e07}.homo-method.cal b{color:var(--accent)}
+.homo-method.cal b{color:var(--accent)}
 .homo-method.uncal b,.homo-method .warn{color:var(--warn)}
-.homo-method .note{color:#8a7d62}
-#viz-row{display:grid;grid-template-columns:minmax(170px,240px) 1fr;gap:8px;align-items:start;margin-bottom:8px}
-.viz-card{background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:8px}
-.viz-title{font-size:10px;color:var(--dimmer);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.08em}
-#ellcv{width:100%;aspect-ratio:1;display:block;border-radius:6px}
-#metric-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;align-content:start}
-.metric{background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:7px 8px;text-align:center}
-.metric .mv{font-family:'IBM Plex Mono',monospace;font-size:18px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums}
-.metric .ml{font-size:11px;color:var(--dimmer);margin-top:2px}
-.metric .mu{font-size:10px;color:var(--dim)}
-#bell-title{font-size:10px;color:var(--dimmer);text-transform:uppercase;letter-spacing:0.08em;margin:4px 0}
-#bell-sub{font-size:10.5px;color:var(--dimmest);margin-bottom:6px;line-height:1.5}
-#homog-mm-row{display:none;margin-top:6px;padding:6px 10px;background:#0c0a06;border:0.5px solid var(--accent-dark);border-radius:6px;font-size:11px;color:#8a7d62;flex-wrap:wrap;gap:12px;justify-content:space-between}
-#homog-mm-row b{color:var(--accent-mid);font-weight:500}
-.method-note{font-size:10.5px;color:var(--dimmest);margin-top:8px;line-height:1.55;border-top:0.5px solid var(--border);padding-top:7px}
-@media (max-width:560px){
-  #viz-row{grid-template-columns:1fr}
-  #bakeInfo{max-width:48%;font-size:9px}
-}
+.homo-method .note{color:var(--ink-faint)}
+#viz-row{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-bottom:8px}
+.viz-card{background:var(--card);border-radius:12px;padding:10px}
+.viz-title{font-size:11px;color:var(--ink-faint);margin-bottom:6px}
+#ellcv{width:100%;aspect-ratio:1;display:block;border-radius:8px}
+#metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+#metric-grid>.metric:last-child:nth-child(3n+1){grid-column:1/-1}
+.metric{background:var(--card);border-radius:10px;padding:8px 6px;text-align:center;min-width:0}
+.metric .mv{font:500 20px/1.2 var(--lq-mono);color:var(--ink);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.metric .ml{font-size:11px;color:var(--ink-dim);margin-top:2px}
+.metric .mu{font-size:11px;color:var(--ink-faint)}
+.bell-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:6px !important}
+#bell-title{font-size:11px;font-weight:600;color:var(--ink-faint);text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 4px}
+#bell-sub{font-size:11px;color:var(--ink-faint);margin-bottom:6px;line-height:1.5}
+#homog-mm-row{display:none;margin-top:8px;padding:8px 10px;background:var(--card);border-radius:10px;font-size:11px;color:var(--ink-dim);flex-wrap:wrap;gap:4px 12px;justify-content:space-between}
+#homog-mm-row b{color:var(--ink);font-weight:500;font-family:var(--lq-mono)}
+.method-note{font-size:11px;color:var(--ink-faint);margin-top:10px;line-height:1.5;border-top:1px solid var(--hair);padding-top:8px}
+.ghost-btn{width:100%;height:44px;margin-top:12px;border:1px solid var(--hair-strong);border-radius:12px;background:none;color:var(--ink-dim);font-size:13px;font-weight:500;transition:color .15s var(--ease),border-color .15s var(--ease)}
+.ghost-btn:hover{color:var(--ink);border-color:var(--ink-faint)}
+#exportBtn.has-homog{border-color:var(--accent-line);color:var(--accent)}
+#exportBtn.done{border-color:var(--accent);color:var(--accent)}
+#footer{font-size:11px;color:var(--ink-faint);margin-top:12px;line-height:1.5}
 </style>
 </head>
 <body>
-<div id="wrap">
+<div id="app">
   <div class="f13ld-header">
     <div class="fh-left">
       <a class="fh-brand" href="https://f13ld.app" target="_blank">
@@ -237,8 +344,9 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
       <div class="fh-tool-name">FOAM</div>
     </div>
     <div class="fh-right">
-      <button class="fh-mesh-btn" onclick="openInMesh()" title="Open in F13LD.mesh — build a watertight, printable 3MF" aria-label="Open in F13LD.mesh">⬡ Mesh</button>
-      <button class="fh-mesh-btn" onclick="openInLab()" title="Open in F13LD.lab — homogenize in the validated FFT solver" aria-label="Open in F13LD.lab">▦ Lab</button>
+      <div id="w-recipe"></div>
+      <button class="fh-mesh-btn" data-native="send" onclick="openInMesh()" title="Open in F13LD.mesh — build a watertight, printable 3MF" aria-label="Open in F13LD.mesh"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6l5.5 3.2v6.4L8 14.4 2.5 11.2V4.8z"/><path d="M8 8v6.4M8 8L2.5 4.8M8 8l5.5-3.2"/></svg><span>Mesh</span></button>
+      <button class="fh-mesh-btn" data-native="send" onclick="openInLab()" title="Open in F13LD.lab — homogenize in the validated FFT solver" aria-label="Open in F13LD.lab"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 1.8h3.6M6.7 1.8v4.4L2.9 12.6a1.2 1.2 0 0 0 1 1.8h8.2a1.2 1.2 0 0 0 1-1.8L9.3 6.2V1.8"/><path d="M4.6 10h6.8"/></svg><span>Lab</span></button>
       <span class="fh-version">v0.8.1</span>
       <div class="fh-icon">
         <svg width="18" height="18" viewBox="0 0 40 40" fill="none" stroke="#5C4624" stroke-width="1.9" stroke-linejoin="round">
@@ -251,215 +359,273 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
     </div>
   </div>
 
-  <div id="cw">
-    <canvas id="c"></canvas>
-    <canvas id="axisCanvas"></canvas>
-    <div id="seedsOverlay">
-      <button class="ovl-btn active" id="btnShowSeeds" title="Show seed positions as dots on the foam preview">seeds <span class="count" id="seedCountBadge">0</span></button>
-      <button class="ovl-btn" id="btnTile" title="Show the foam tiled in a 3×3×3 array. With periodic on, the seams should be invisible — that's the check that periodicity is working.">tile: 1×</button>
-    </div>
-    <div id="clipOverlay">
-      <button class="clip-pill" id="clipPillX" data-axis="1">X</button>
-      <button class="clip-pill" id="clipPillY" data-axis="2">Y</button>
-      <button class="clip-pill" id="clipPillZ" data-axis="3">Z</button>
-    </div>
-    <div id="qualityOverlay">
-      <button class="ovl-btn" id="btnQLow" data-q="low">Low</button>
-      <button class="ovl-btn active" id="btnQMed" data-q="medium">Med</button>
-      <button class="ovl-btn" id="btnQHigh" data-q="high">High</button>
-    </div>
-    <div id="bakeInfo">initializing …</div>
-  </div>
-
-  <div id="panel">
-    <div id="meshWarn" role="alert">
-      <span>⚠ This foam isn’t periodic, so it can’t tile into a part in F13LD.mesh. Opposite faces of the cube must match before it can be handed off.</span>
-      <button class="pill-toggle" id="meshWarnFix">turn periodic on</button>
-      <button class="mw-close" id="meshWarnClose" aria-label="Dismiss">×</button>
-    </div>
-    <div id="eqbar-wrap">
-      <div class="section-label" id="eqbar-label">foam field</div>
-      <div id="eqbar"></div>
-    </div>
-
-    <!-- TOPOLOGY + GEOMETRY -->
-    <div class="surf-controls">
-      <div class="sc-group">
-        <label>topology</label>
-        <div class="mode-strip">
-          <button class="mode-btn" id="mOpen" data-topo="open" title="Struts along the edges where 3+ cells meet">open</button>
-          <button class="mode-btn" id="mClosed" data-topo="closed" title="Walls on the faces between neighbouring cells">closed</button>
-          <button class="mode-btn active" id="mPlateau" data-topo="plateau" title="Struts with swollen junctions">plateau</button>
-          <button class="mode-btn" id="mWet" data-topo="wet" title="Wet foam: true Plateau borders — the material left between rounded cells, with concave triangular struts and tetrahedral nodes">wet</button>
+  <div id="main">
+    <!-- ═══ Viewer pane ═══ -->
+    <section id="viewPane" aria-label="3D view">
+      <div id="cw">
+        <canvas id="c"></canvas>
+        <canvas id="axisCanvas"></canvas>
+        <div class="vw-tr" id="seedsOverlay">
+          <button class="ovl-btn hit active" id="btnShowSeeds" role="switch" aria-checked="true" data-native="toggle" title="Show seed positions as dots on the foam preview"><span>seeds</span><span class="count" id="seedCountBadge">0</span></button>
+          <button class="ovl-btn hit" id="btnTile" role="switch" aria-checked="false" data-native="toggle" title="Show the foam tiled in a 3×3×3 array. With periodic on, the seams should be invisible — that's the check that periodicity is working.">tile: 1×</button>
         </div>
-      </div>
-      <div class="sc-group">
-        <label>cells</label>
-        <input type="range" id="sCount" min="0" max="1000" step="1" value="700" title="Number of cells in the repeating cube. Fine steps at low counts; lattices go down to a single cube.">
-        <span class="sv" id="vsCount">200</span>
-        <span class="mm-hint" id="vsCount_mm"></span>
-      </div>
-      <div class="sc-group">
-        <label>cell size</label>
-        <input type="number" id="cellSizeMM" class="cellsize-inp" min="0" step="0.1" value="2" title="Average cell diameter in mm. Display-only — does not affect the JSON export. Stored per-browser.">
-        <span style="font-size:11px;color:var(--dim)">mm</span>
-      </div>
-      <div class="sc-group" id="grp-thick">
-        <label>thickness</label>
-        <input type="range" id="sThick" min="0.02" max="0.50" step="0.01" value="0.08">
-        <span class="sv" id="vsThick">0.08</span>
-        <span class="mm-hint" id="vsThick_mm"></span>
-      </div>
-      <div class="sc-group" id="grp-plateauK">
-        <label>plateau k</label>
-        <input type="range" id="sPlateauK" min="0.01" max="0.20" step="0.01" value="0.05">
-        <span class="sv" id="vsPlateauK">0.05</span>
-      </div>
-      <div class="sc-group hidden" id="grp-border">
-        <label>border</label>
-        <input type="range" id="sBorder" min="0.05" max="1.50" step="0.01" value="0.40" title="Plateau border radius: each cell is rounded by this radius and the material is what's left between the rounded cells. Larger = wetter foam, thicker borders.">
-        <span class="sv" id="vsBorder">0.40</span>
-        <span class="mm-hint" id="vsBorder_mm"></span>
-      </div>
-      <div class="sc-group hidden" id="grp-edge">
-        <label>edge</label>
-        <input type="range" id="sEdge" min="0" max="0.20" step="0.005" value="0.030" title="Minimum edge width: where the border thins to a sharp cusp, anything narrower than this is cut back and the tip rounded. Keeps the cusps meshable and printable. 0 = sharp cusps.">
-        <span class="sv" id="vsEdge">0.030</span>
-        <span class="mm-hint" id="vsEdge_mm"></span>
-        <span class="mm-hint" id="vsEdge_warn"></span>
-      </div>
-      <div class="sc-group" id="grp-fillet">
-        <label>fillet</label>
-        <input type="range" id="sFillet" min="0" max="0.60" step="0.01" value="0" title="Concave fillet where struts (or walls) meet — a true blend radius. Mid-span thickness is unchanged.">
-        <span class="sv" id="vsFillet">0.00</span>
-        <span class="mm-hint" id="vsFillet_mm"></span>
-      </div>
-      <div class="sc-group" id="grp-node">
-        <label>node</label>
-        <input type="range" id="sNode" min="0" max="0.40" step="0.01" value="0" title="Extra radius of a sphere at every node, blended into the struts by the fillet.">
-        <span class="sv" id="vsNode">0.00</span>
-        <span class="mm-hint" id="vsNode_mm"></span>
-      </div>
-    </div>
-
-    <hr class="divider">
-
-    <!-- SEED DISTRIBUTION -->
-    <div class="section-header">
-      <div class="section-label" id="seedLabel">⬢ seed distribution</div>
-      <button class="pill-toggle" id="periodicToggle" title="Opposite faces of the cube share the same seed pattern, so the foam tiles seamlessly when the cube is repeated.">periodic: off</button>
-    </div>
-    <select id="seedMode" class="preset-sel">
-      <optgroup label="stochastic">
-        <option value="poisson" selected>Poisson-disk (blue-noise)</option>
-        <option value="lloyd">Lloyd-relaxed</option>
-        <option value="random">uniform random</option>
-        <option value="bimodal">two-size mix (exact cell volumes)</option>
-      </optgroup>
-      <optgroup label="symmetric stochastic">
-        <option value="mirror">mirror (orthotropic)</option>
-        <option value="cubic">cubic</option>
-      </optgroup>
-      <optgroup label="lattice">
-        <option value="weairePhelan">Weaire–Phelan</option>
-        <option value="kelvin">Kelvin (BCC truncated octahedra)</option>
-        <option value="fcc">FCC (rhombic dodecahedra)</option>
-        <option value="c15">C15 Laves (Frank–Kasper)</option>
-      </optgroup>
-    </select>
-    <div class="surf-controls" style="margin-top:10px">
-      <div class="sc-group" id="grp-spacing">
-        <label>regularity</label>
-        <input type="range" id="sSpacing" min="0.45" max="1.0" step="0.01" value="0.9" title="Minimum seed spacing as a fraction of the tightest spacing that still fits the requested cell count. 1 = most even; lower = more random.">
-        <span class="sv" id="vsSpacing">0.90</span>
-        <span class="mm-hint" id="vsSpacing_mm"></span>
-      </div>
-      <div class="sc-group" id="grp-lloyd">
-        <label>Lloyd iter</label>
-        <input type="range" id="sLloyd" min="0" max="60" step="1" value="4" title="Rounds of moving each seed to its cell's centroid. Many rounds make the layout hyperuniform (see the structure factor below).">
-        <span class="sv" id="vsLloyd">4</span>
-      </div>
-      <div class="sc-group hidden" id="grp-ratio">
-        <label>size ratio</label>
-        <input type="range" id="sRatio" min="1.1" max="3.0" step="0.05" value="2.0" title="Diameter of the large cells ÷ the small ones (volume ratio is this cubed).">
-        <span class="sv" id="vsRatio">2.00</span>
-      </div>
-      <div class="sc-group hidden" id="grp-large">
-        <label>large share</label>
-        <input type="range" id="sLarge" min="0.05" max="0.95" step="0.05" value="0.30" title="Share of cells that are large.">
-        <span class="sv" id="vsLarge">0.30</span>
-      </div>
-      <div class="sc-group hidden" id="grp-jitter">
-        <label>disorder</label>
-        <input type="range" id="sJitter" min="0" max="0.50" step="0.01" value="0" title="Random nudge of each lattice seed, as a fraction of the mean spacing. Kelvin keeps its 14-faced cells up to about 0.1.">
-        <span class="sv" id="vsJitter">0.00</span>
-      </div>
-      <div class="sc-group" id="grp-rng">
-        <label>RNG seed</label>
-        <input type="number" id="rngSeed" class="num-inp" value="42" step="1">
-        <button class="reseed-btn" id="reseedBtn">↻ reseed</button>
-      </div>
-    </div>
-    <div id="sk-wrap" title="Structure factor of the seeds: how much the seed density fluctuates at each wavelength. 1 = random (Poisson). Dropping toward 0 at the left = hyperuniform (large-scale fluctuations suppressed).">
-      <div class="sk-head"><span>structure factor S(k)</span><span id="skNote"></span></div>
-      <canvas id="skCanvas"></canvas>
-    </div>
-
-    <hr class="divider">
-
-    <!-- ANISOTROPY -->
-    <div class="section-header">
-      <div class="section-label" id="anisoLabel">⬢ anisotropy</div>
-      <button class="pill-toggle" id="anisoToggle">off</button>
-    </div>
-    <div class="aniso-row disabled" id="anisoRow">
-      <div class="aniso-axis x"><span class="axis-lbl">X</span><input type="range" id="sAnisoX" min="0.3" max="3.0" step="0.05" value="1.0"><span class="sv" id="vsAnisoX">1.00</span></div>
-      <div class="aniso-axis y"><span class="axis-lbl">Y</span><input type="range" id="sAnisoY" min="0.3" max="3.0" step="0.05" value="1.0"><span class="sv" id="vsAnisoY">1.00</span></div>
-      <div class="aniso-axis z"><span class="axis-lbl">Z</span><input type="range" id="sAnisoZ" min="0.3" max="3.0" step="0.05" value="1.0"><span class="sv" id="vsAnisoZ">1.00</span></div>
-    </div>
-
-    <hr class="divider">
-
-    <!-- STIFFNESS ESTIMATE (v0.5.0) -->
-    <div class="section-label" id="estLabel">⬢ stiffness estimate</div>
-    <div class="homo-controls">
-      <label>E<sub>s</sub> (GPa) <input type="number" id="Es" class="num-inp" value="110" min="1" max="1000" step="1" title="Solid modulus of the printed material; Ti-6Al-4V ≈ 110 GPa"></label>
-      <label>ν<sub>s</sub> <input type="number" id="nuS" class="num-inp" value="0.3" min="0" max="0.49" step="0.01" title="Poisson's ratio of the solid (the calibration used 0.3)"></label>
-      <button id="runBtn" title="Measure the solid fraction and estimate the effective stiffness from laws fitted to F13LD.lab">Estimate stiffness</button>
-      <span id="homo-status"></span>
-    </div>
-    <div id="homo-results">
-      <div id="homo-method" class="homo-method"></div>
-      <div id="viz-row">
-        <div class="viz-card">
-          <div class="viz-title">directional stiffness</div>
-          <canvas id="ellcv"></canvas>
+        <div id="meshWarn" role="alert">
+          <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.2 11H1.8z"/><path d="M8 6.4v3.2M8 11.4h.01"/></svg>
+          <span>This foam isn’t periodic, so it can’t tile into a part in F13LD.mesh. Opposite faces of the cube must match before it can be handed off.</span>
+          <button type="button" class="mw-fix" id="meshWarnFix">Turn periodic on</button>
+          <button type="button" class="mw-close" id="meshWarnClose" aria-label="Dismiss"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
         </div>
-        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
-          <div id="metric-grid">
-            <div class="metric"><div class="mv" id="rv">—</div><div class="ml">solid fraction</div></div>
-            <div class="metric"><div class="mv" id="rex" style="color:var(--xc)">—</div><div class="ml">E<sub>x</sub><span class="mu stiff-unit"> GPa</span></div></div>
-            <div class="metric"><div class="mv" id="rey" style="color:var(--yc)">—</div><div class="ml">E<sub>y</sub><span class="mu stiff-unit"> GPa</span></div></div>
-            <div class="metric"><div class="mv" id="rez" style="color:var(--zc)">—</div><div class="ml">E<sub>z</sub><span class="mu stiff-unit"> GPa</span></div></div>
-            <div class="metric"><div class="mv" id="rgyz" style="color:#a78bfa">—</div><div class="ml">G<sub>yz</sub><span class="mu stiff-unit"> GPa</span></div></div>
-            <div class="metric"><div class="mv" id="rgxz" style="color:#a78bfa">—</div><div class="ml">G<sub>xz</sub><span class="mu stiff-unit"> GPa</span></div></div>
-            <div class="metric"><div class="mv" id="rgxy" style="color:#a78bfa">—</div><div class="ml">G<sub>xy</sub><span class="mu stiff-unit"> GPa</span></div></div>
-            <div class="metric"><div class="mv" id="rnu">—</div><div class="ml">Poisson's ratio</div></div>
-            <div class="metric"><div class="mv" id="rratio">—</div><div class="ml">E max ÷ E min</div></div>
+        <div class="vw-bl">
+          <div id="w-clip"></div>
+          <div id="clipOverlay" data-native="clip" role="group" aria-label="Clip plane">
+            <span class="clip-lbl">clip</span>
+            <button class="clip-pill hit" id="clipPillX" data-axis="1" aria-pressed="false" aria-label="Clip along X">X</button>
+            <button class="clip-pill hit" id="clipPillY" data-axis="2" aria-pressed="false" aria-label="Clip along Y">Y</button>
+            <button class="clip-pill hit" id="clipPillZ" data-axis="3" aria-pressed="false" aria-label="Clip along Z">Z</button>
           </div>
-          <div id="bell-wrap">
-            <div id="bell-title">Likely range of true stiffness</div>
-            <div id="bell-sub"></div>
-            <div id="bell-rows"></div>
+        </div>
+        <div class="vw-br">
+          <div id="bakeInfo" role="status">initializing …</div>
+          <div id="qualityOverlay" role="group" aria-label="Preview quality">
+            <button class="ovl-btn hit" id="btnQLow" data-q="low" aria-pressed="false">Low</button>
+            <button class="ovl-btn hit active" id="btnQMed" data-q="medium" aria-pressed="true">Med</button>
+            <button class="ovl-btn hit" id="btnQHigh" data-q="high" aria-pressed="false">High</button>
           </div>
         </div>
       </div>
-      <div id="homog-mm-row"><span>tile = <b id="mm-tile">—</b></span><span>solid volume per tile = <b id="mm-solid">—</b></span></div>
-      <div class="method-note" id="method-note"></div>
-    </div>
+    </section>
 
-    <button id="exportBtn">Export JSON</button>
-    <div id="footer">Drag to rotate · Scroll or pinch to zoom · X/Y/Z cut the view, drag the handle to move the cut · Seeds and tile toggles at top left</div>
+    <!-- ═══ Control pane: desktop column / phone bottom sheet ═══ -->
+    <aside id="ctrlPane" aria-label="Controls">
+      <button id="sheetHandle" type="button" aria-label="Drag to resize the controls"></button>
+      <nav id="sectionsRail" aria-label="Sections"></nav>
+      <div id="ctrlScroll">
+
+        <!-- 1 · Seeds -->
+        <section class="sec" id="sec-seeds" data-section="seeds">
+          <h2 class="sec-h"><span class="sec-n">01</span>Seeds</h2>
+          <div class="sc-group" id="grp-seedmode">
+            <label id="seedLabel" for="seedMode" class="lbl-w">seed mode</label>
+            <div id="w-seedmode"></div>
+            <select id="seedMode" class="fld" data-native="select">
+              <optgroup label="stochastic">
+                <option value="poisson" selected>Poisson-disk (blue-noise)</option>
+                <option value="lloyd">Lloyd-relaxed</option>
+                <option value="random">uniform random</option>
+                <option value="bimodal">two-size mix (exact cell volumes)</option>
+              </optgroup>
+              <optgroup label="symmetric stochastic">
+                <option value="mirror">mirror (orthotropic)</option>
+                <option value="cubic">cubic</option>
+              </optgroup>
+              <optgroup label="lattice">
+                <option value="weairePhelan">Weaire–Phelan</option>
+                <option value="kelvin">Kelvin (BCC truncated octahedra)</option>
+                <option value="fcc">FCC (rhombic dodecahedra)</option>
+                <option value="c15">C15 Laves (Frank–Kasper)</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="sc-group" id="grp-periodic">
+            <label>periodic</label>
+            <div id="w-periodic"></div>
+            <button type="button" class="sw" id="periodicToggle" role="switch" aria-checked="false" data-native="toggle" title="Opposite faces of the cube share the same seed pattern, so the foam tiles seamlessly when the cube is repeated."><span class="sw-t"></span><span class="sw-l">off</span></button>
+          </div>
+          <div class="sc-group sl" id="grp-cells" data-w-slider="sCount">
+            <label for="sCount">cells</label>
+            <span class="mm-hint" id="vsCount_mm"></span>
+            <span class="sv" id="vsCount">200</span>
+            <input type="range" id="sCount" min="0" max="1000" step="1" value="700" title="Number of cells in the repeating cube. Fine steps at low counts; lattices go down to a single cube.">
+          </div>
+          <div class="sc-group" id="grp-cellsize">
+            <label for="cellSizeMM" class="lbl-w">cell size</label>
+            <input type="number" id="cellSizeMM" class="fld-num cellsize-inp" min="0" step="0.1" value="2" title="Average cell diameter in mm. Sets tile_mm (the cube edge in mm) in the JSON export and scales the mm read-outs. Stored per-browser.">
+            <span class="unit">mm</span>
+          </div>
+
+          <div class="sub-h">spread</div>
+          <div class="sc-group sl" id="grp-spacing" data-w-slider="sSpacing">
+            <label for="sSpacing">regularity</label>
+            <span class="mm-hint" id="vsSpacing_mm"></span>
+            <span class="sv" id="vsSpacing">0.90</span>
+            <input type="range" id="sSpacing" min="0.45" max="1.0" step="0.01" value="0.9" title="Minimum seed spacing as a fraction of the tightest spacing that still fits the requested cell count. 1 = most even; lower = more random.">
+          </div>
+          <div class="sc-group sl" id="grp-lloyd" data-w-slider="sLloyd">
+            <label for="sLloyd">Lloyd iter</label>
+            <span class="sv" id="vsLloyd">4</span>
+            <input type="range" id="sLloyd" min="0" max="60" step="1" value="4" title="Rounds of moving each seed to its cell's centroid. Many rounds make the layout hyperuniform (see the structure factor below).">
+          </div>
+          <div class="sc-group sl hidden" id="grp-ratio" data-w-slider="sRatio">
+            <label for="sRatio">size ratio</label>
+            <span class="sv" id="vsRatio">2.00</span>
+            <input type="range" id="sRatio" min="1.1" max="3.0" step="0.05" value="2.0" title="Diameter of the large cells ÷ the small ones (volume ratio is this cubed).">
+          </div>
+          <div class="sc-group sl hidden" id="grp-large" data-w-slider="sLarge">
+            <label for="sLarge">large share</label>
+            <span class="sv" id="vsLarge">0.30</span>
+            <input type="range" id="sLarge" min="0.05" max="0.95" step="0.05" value="0.30" title="Share of cells that are large.">
+          </div>
+          <div class="sc-group sl hidden" id="grp-jitter" data-w-slider="sJitter">
+            <label for="sJitter">disorder</label>
+            <span class="sv" id="vsJitter">0.00</span>
+            <input type="range" id="sJitter" min="0" max="0.50" step="0.01" value="0" title="Random nudge of each lattice seed, as a fraction of the mean spacing. Kelvin keeps its 14-faced cells up to about 0.1.">
+          </div>
+          <div class="sc-group" id="grp-rng">
+            <label for="rngSeed" class="lbl-w">RNG seed</label>
+            <input type="number" id="rngSeed" class="fld-num num-inp" value="42" step="1">
+            <button type="button" class="act-btn" id="reseedBtn"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 8A5.2 5.2 0 1 1 11.6 4.3"/><path d="M13.4 2.2v3.2H10.2"/></svg><span>reseed</span></button>
+          </div>
+
+          <div class="sub-h">check</div>
+          <div id="sk-wrap" title="Structure factor of the seeds: how much the seed density fluctuates at each wavelength. 1 = random (Poisson). Dropping toward 0 at the left = hyperuniform (large-scale fluctuations suppressed).">
+            <div class="sk-head"><span id="skTitle">structure factor S(k)</span><span id="skNote"></span></div>
+            <canvas id="skCanvas"></canvas>
+          </div>
+        </section>
+
+        <!-- 2 · Structure -->
+        <section class="sec" id="sec-structure" data-section="structure">
+          <h2 class="sec-h"><span class="sec-n">02</span>Structure</h2>
+          <div id="eqbar-wrap">
+            <div class="sub-h" id="eqbar-label">foam field</div>
+            <div id="eqbar"></div>
+          </div>
+          <div class="sub-h">shape</div>
+          <div class="sc-group" id="grp-topo">
+            <label>topology</label>
+            <div id="w-topo"></div>
+            <div class="mode-strip" data-native="mode" role="radiogroup" aria-label="Topology">
+              <button class="mode-btn" id="mOpen" data-topo="open" role="radio" aria-checked="false" title="Struts along the edges where 3+ cells meet">open</button>
+              <button class="mode-btn" id="mClosed" data-topo="closed" role="radio" aria-checked="false" title="Walls on the faces between neighbouring cells">closed</button>
+              <button class="mode-btn active" id="mPlateau" data-topo="plateau" role="radio" aria-checked="true" title="Struts with swollen junctions">plateau</button>
+              <button class="mode-btn" id="mWet" data-topo="wet" role="radio" aria-checked="false" title="Wet foam: true Plateau borders — the material left between rounded cells, with concave triangular struts and tetrahedral nodes">wet</button>
+            </div>
+          </div>
+          <div class="sc-group sl" id="grp-thick" data-w-slider="sThick">
+            <label for="sThick">thickness</label>
+            <span class="mm-hint" id="vsThick_mm"></span>
+            <span class="sv" id="vsThick">0.08</span>
+            <input type="range" id="sThick" min="0.02" max="0.50" step="0.01" value="0.08">
+          </div>
+          <div class="sc-group sl" id="grp-plateauK" data-w-slider="sPlateauK">
+            <label for="sPlateauK">plateau k</label>
+            <span class="sv" id="vsPlateauK">0.05</span>
+            <input type="range" id="sPlateauK" min="0.01" max="0.20" step="0.01" value="0.05">
+          </div>
+          <div class="sc-group sl hidden" id="grp-border" data-w-slider="sBorder">
+            <label for="sBorder">border</label>
+            <span class="mm-hint" id="vsBorder_mm"></span>
+            <span class="sv" id="vsBorder">0.40</span>
+            <input type="range" id="sBorder" min="0.05" max="1.50" step="0.01" value="0.40" title="Plateau border radius: each cell is rounded by this radius and the material is what's left between the rounded cells. Larger = wetter foam, thicker borders.">
+          </div>
+          <div class="sc-group sl hidden" id="grp-edge" data-w-slider="sEdge">
+            <label for="sEdge">edge</label>
+            <span class="mm-hint" id="vsEdge_mm"></span>
+            <span class="sv" id="vsEdge">0.030</span>
+            <input type="range" id="sEdge" min="0" max="0.20" step="0.005" value="0.030" title="Minimum edge width: where the border thins to a sharp cusp, anything narrower than this is cut back and the tip rounded. Keeps the cusps meshable and printable. 0 = sharp cusps.">
+            <span class="mm-hint row-extra" id="vsEdge_warn"></span>
+          </div>
+          <div class="sc-group sl" id="grp-fillet" data-w-slider="sFillet">
+            <label for="sFillet">fillet</label>
+            <span class="mm-hint" id="vsFillet_mm"></span>
+            <span class="sv" id="vsFillet">0.00</span>
+            <input type="range" id="sFillet" min="0" max="0.60" step="0.01" value="0" title="Concave fillet where struts (or walls) meet — a true blend radius. Mid-span thickness is unchanged.">
+          </div>
+          <div class="sc-group sl" id="grp-node" data-w-slider="sNode">
+            <label for="sNode">node</label>
+            <span class="mm-hint" id="vsNode_mm"></span>
+            <span class="sv" id="vsNode">0.00</span>
+            <input type="range" id="sNode" min="0" max="0.40" step="0.01" value="0" title="Extra radius of a sphere at every node, blended into the struts by the fillet.">
+          </div>
+        </section>
+
+        <!-- 3 · Stretch -->
+        <section class="sec" id="sec-stretch" data-section="stretch">
+          <h2 class="sec-h"><span class="sec-n">03</span>Stretch</h2>
+          <div class="sc-group" id="grp-aniso">
+            <label id="anisoLabel">anisotropy</label>
+            <div id="w-aniso"></div>
+            <button type="button" class="sw" id="anisoToggle" role="switch" aria-checked="false" data-native="toggle"><span class="sw-t"></span><span class="sw-l">off</span></button>
+          </div>
+          <div class="aniso-row disabled" id="anisoRow">
+            <div class="sc-group sl" id="grp-ax" data-w-slider="sAnisoX">
+              <label for="sAnisoX">X</label>
+              <span class="sv" id="vsAnisoX">1.00</span>
+              <input type="range" id="sAnisoX" min="0.3" max="3.0" step="0.05" value="1.0">
+            </div>
+            <div class="sc-group sl" id="grp-ay" data-w-slider="sAnisoY">
+              <label for="sAnisoY">Y</label>
+              <span class="sv" id="vsAnisoY">1.00</span>
+              <input type="range" id="sAnisoY" min="0.3" max="3.0" step="0.05" value="1.0">
+            </div>
+            <div class="sc-group sl" id="grp-az" data-w-slider="sAnisoZ">
+              <label for="sAnisoZ">Z</label>
+              <span class="sv" id="vsAnisoZ">1.00</span>
+              <input type="range" id="sAnisoZ" min="0.3" max="3.0" step="0.05" value="1.0">
+            </div>
+          </div>
+        </section>
+
+        <!-- 4 · Analyze -->
+        <section class="sec" id="sec-analyze" data-section="analyze">
+          <h2 class="sec-h"><span class="sec-n">04</span>Analyze</h2>
+          <div class="sub-h" id="estLabel">stiffness estimate</div>
+          <div class="homo-controls">
+            <div class="sc-group" id="grp-es">
+              <label for="Es">E<sub>s</sub> (GPa)</label>
+              <input type="number" id="Es" class="fld-num num-inp" value="110" min="1" max="1000" step="1" title="Solid modulus of the printed material; Ti-6Al-4V ≈ 110 GPa">
+            </div>
+            <div class="sc-group" id="grp-nus">
+              <label for="nuS">ν<sub>s</sub></label>
+              <input type="number" id="nuS" class="fld-num num-inp" value="0.3" min="0" max="0.49" step="0.01" title="Poisson's ratio of the solid (the calibration used 0.3)">
+            </div>
+          </div>
+          <div id="w-run"></div>
+          <button id="runBtn" data-native="run" title="Measure the solid fraction and estimate the effective stiffness from laws fitted to F13LD.lab">Estimate stiffness</button>
+          <div id="homo-status" role="status"></div>
+          <div id="homo-results">
+            <div id="homo-method" class="homo-method"></div>
+            <div id="viz-row">
+              <div class="viz-card">
+                <div class="viz-title">directional stiffness</div>
+                <canvas id="ellcv"></canvas>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+                <div id="metric-grid">
+                  <div class="metric"><div class="mv" id="rv">—</div><div class="ml">solid fraction</div></div>
+                  <div class="metric"><div class="mv" id="rex" style="color:var(--axis-x)">—</div><div class="ml">E<sub>x</sub><span class="mu stiff-unit"> GPa</span></div></div>
+                  <div class="metric"><div class="mv" id="rey" style="color:var(--axis-y)">—</div><div class="ml">E<sub>y</sub><span class="mu stiff-unit"> GPa</span></div></div>
+                  <div class="metric"><div class="mv" id="rez" style="color:var(--axis-z)">—</div><div class="ml">E<sub>z</sub><span class="mu stiff-unit"> GPa</span></div></div>
+                  <div class="metric"><div class="mv" id="rgyz" style="color:var(--shear)">—</div><div class="ml">G<sub>yz</sub><span class="mu stiff-unit"> GPa</span></div></div>
+                  <div class="metric"><div class="mv" id="rgxz" style="color:var(--shear)">—</div><div class="ml">G<sub>xz</sub><span class="mu stiff-unit"> GPa</span></div></div>
+                  <div class="metric"><div class="mv" id="rgxy" style="color:var(--shear)">—</div><div class="ml">G<sub>xy</sub><span class="mu stiff-unit"> GPa</span></div></div>
+                  <div class="metric"><div class="mv" id="rnu">—</div><div class="ml">Poisson's ratio</div></div>
+                  <div class="metric"><div class="mv" id="rratio">—</div><div class="ml">E max ÷ E min</div></div>
+                </div>
+                <div id="bell-wrap">
+                  <div id="bell-title">Likely range of true stiffness</div>
+                  <div id="bell-sub"></div>
+                  <div id="bell-rows"></div>
+                </div>
+              </div>
+            </div>
+            <div id="homog-mm-row"><span>tile = <b id="mm-tile">—</b></span><span>solid volume per tile = <b id="mm-solid">—</b></span></div>
+            <div class="method-note" id="method-note"></div>
+          </div>
+          <button id="exportBtn" class="ghost-btn" data-native="export">Export JSON</button>
+          <div id="footer">Drag to rotate · scroll or pinch to zoom · X/Y/Z cut the view, drag the ring to move the cut</div>
+        </section>
+
+      </div>
+      <nav id="sectionsBar" aria-label="Sections">
+        <div class="sb-fallback">
+          <button type="button" data-section="seeds" class="on">Seeds</button>
+          <button type="button" data-section="structure">Structure</button>
+          <button type="button" data-section="stretch">Stretch</button>
+          <button type="button" data-section="analyze">Analyze</button>
+        </div>
+      </nav>
+    </aside>
   </div>
 </div>
 
@@ -472,6 +638,7 @@ select.preset-sel:focus{outline:none;border-color:var(--accent-deep)}
 // Shell, camera, clip plane, help and handoff follow F13LD.tpms v1.1.0.
 // ============================================================================
 
+const APP_VERSION = '0.8.1';   // header, banner and the export's meta.version (kept equal)
 const canvas = document.getElementById('c');
 let f13View = null;
 // ==== F13LD-SHADE v1 · shared viewer shading (GLSL). Keep this block byte-identical in every F13LD tool. ====
@@ -614,16 +781,17 @@ const QUALITY_TIERS = {
 };
 let currentQuality = 'medium';
 
+// The viewer fills its pane (CSS sets the canvas box); the drawing buffer follows it.
 function resize(){
-  const cssW = canvas.parentElement.clientWidth;
+  const host = canvas.parentElement;
+  const cssW = Math.max(1, host.clientWidth), cssH = Math.max(1, host.clientHeight);
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-  const cssH = Math.min(cssW, 420);
   const w = Math.round(cssW * dpr), h = Math.round(cssH * dpr);
   if(canvas.width !== w || canvas.height !== h){ canvas.width = w; canvas.height = h; }
-  canvas.style.height = cssH + 'px';
 }
 resize();
 window.addEventListener('resize', resize);
+if(window.ResizeObserver) new ResizeObserver(resize).observe(canvas.parentElement);   // sheet, rail and breakpoint changes
 
 // ============================================================================
 // STATE
@@ -1694,15 +1862,18 @@ function computeSk(seeds){
 }
 function drawSk(){
   skTimer = null;
-  const cv = $('skCanvas'), pts = state.periodic ? computeSk(state.seeds) : null;
+  // Not periodic: no plot, one line instead of an empty box.
+  $('sk-wrap').classList.toggle('off', !state.periodic);
+  if(!state.periodic){ $('skNote').textContent = 'periodic seeds only'; return; }
+  const cv = $('skCanvas'), pts = computeSk(state.seeds);
   const dpr = Math.min(window.devicePixelRatio || 1, 2), W = cv.clientWidth, H = cv.clientHeight;
-  if(!W) return;
+  if(!W) return;   // section hidden: redrawn when it is shown again
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
-  const css = getComputedStyle(document.documentElement), dim = css.getPropertyValue('--dim').trim() || '#888',
-        acc = css.getPropertyValue('--accent').trim() || '#E8D4A2', brd = css.getPropertyValue('--border').trim() || '#2a2a3a';
-  ctx.font = '10px "IBM Plex Mono", monospace'; ctx.fillStyle = dim;
-  if(!pts){ $('skNote').textContent = state.periodic ? '' : 'periodic seeds only'; return; }
+  const css = getComputedStyle(document.documentElement), dim = css.getPropertyValue('--ink-faint').trim() || '#888',
+        acc = css.getPropertyValue('--accent').trim() || '#E8D4A2', brd = css.getPropertyValue('--hair-strong').trim() || '#2a2a3a';
+  ctx.font = '11px "IBM Plex Mono", monospace'; ctx.fillStyle = dim;
+  if(!pts){ $('skNote').textContent = ''; return; }
   const xmax = 2.4, ymax = Math.min(3, Math.max(2, ...pts.map(p => p[1]))), L = 26, R = 6, T = 6, B = 16;
   const px = x => L + (W - L - R) * Math.min(x, xmax) / xmax, py = y => T + (H - T - B) * (1 - Math.min(y, ymax) / ymax);
   ctx.strokeStyle = brd; ctx.lineWidth = 1;
@@ -2616,6 +2787,7 @@ function updateClipPills(){
     const el = $('clipPill' + 'XYZ'[a - 1]);
     const on = clipState.axis === a;
     el.classList.toggle('active', on);
+    el.setAttribute('aria-pressed', on ? 'true' : 'false');
     el.style.color = on ? AXIS_COLS[a - 1] : '';
     el.style.borderColor = on ? AXIS_COLS[a - 1] : '';
   });
@@ -2657,7 +2829,7 @@ function edgeBlendK(){ return state.edgeMin > 0 ? state.edgeMin / (2 - Math.SQRT
 function updateEdgeWarn(){
   const near = state.topology === 'wet' && state.edgeMin >= 0.15 * state.border;
   setHint('vsEdge_warn', near ? 'near strut size — thins the struts' : '');
-  $('vsEdge_warn').style.color = near ? '#d08a5a' : '';
+  $('vsEdge_warn').style.color = near ? 'var(--warn)' : '';
 }
 
 function updateEq(){
@@ -2716,9 +2888,11 @@ function updateSolidFraction(){
 }
 
 // Any change to the design resets the export button's confirmation state.
+var designRev = 0;   // var: onDesignChange can run before this line during load
 function onDesignChange(){
+  designRev++;
   const b = $('exportBtn');
-  b.textContent = 'Export JSON'; b.style.borderColor = ''; b.style.color = '';
+  b.textContent = 'Export JSON'; b.className = 'ghost-btn'; b.title = '';
   if(typeof estStale === 'function') estStale();   // v0.5.0 — an estimate belongs to one design
 }
 
@@ -2785,7 +2959,7 @@ bindRange('sAnisoY', 'anisoY', f2, anisoChange);
 bindRange('sAnisoZ', 'anisoZ', f2, anisoChange);
 
 document.querySelectorAll('.mode-btn[data-topo]').forEach(btn => btn.addEventListener('click', () => {
-  document.querySelectorAll('.mode-btn[data-topo]').forEach(b => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('.mode-btn[data-topo]').forEach(b => { b.classList.toggle('active', b === btn); b.setAttribute('aria-checked', b === btn ? 'true' : 'false'); });
   const wasWet = state.topology === 'wet';
   state.topology = btn.dataset.topo;
   syncTopologyUI();
@@ -2804,13 +2978,17 @@ function syncTopologyUI(){
 syncTopologyUI();
 
 document.querySelectorAll('#qualityOverlay .ovl-btn').forEach(btn => btn.addEventListener('click', () => {
-  document.querySelectorAll('#qualityOverlay .ovl-btn').forEach(b => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('#qualityOverlay .ovl-btn').forEach(b => { b.classList.toggle('active', b === btn); b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
   currentQuality = btn.dataset.q;
   rebuildShader();   // step count is compiled in
   scheduleBake();    // bake resolution follows quality
 }));
 
-function setToggle(el, on, text){ el.classList.toggle('on', on); el.textContent = text; }
+// Switch buttons (.sw): class + aria-checked carry the state, .sw-l the on / off word.
+function setToggle(el, on, text){
+  el.classList.toggle('on', on); el.setAttribute('aria-checked', on ? 'true' : 'false');
+  const l = el.querySelector('.sw-l'); if(l) l.textContent = text;
+}
 
 $('anisoToggle').addEventListener('click', function(){
   state.aniso = !state.aniso;
@@ -2821,7 +2999,7 @@ $('anisoToggle').addEventListener('click', function(){
 
 function setPeriodic(on){
   state.periodic = on;
-  setToggle($('periodicToggle'), on, 'periodic: ' + (on ? 'on' : 'off'));
+  setToggle($('periodicToggle'), on, on ? 'on' : 'off');
   if(on) hideMeshWarning();
 }
 $('periodicToggle').addEventListener('click', () => { setPeriodic(!state.periodic); scheduleRegen(); onDesignChange(); });
@@ -2868,6 +3046,7 @@ $('reseedBtn').addEventListener('click', () => {
 $('btnShowSeeds').addEventListener('click', function(){
   state.showSeeds = !state.showSeeds;
   this.classList.toggle('active', state.showSeeds);
+  this.setAttribute('aria-checked', state.showSeeds ? 'true' : 'false');
 });
 
 // Tile 1× ↔ 3×: scale camera distance and zoom limits so the view stays framed.
@@ -2878,6 +3057,7 @@ $('btnTile').addEventListener('click', function(){
   ZOOM_MIN = ZOOM_MIN_BASE * next; ZOOM_MAX = ZOOM_MAX_BASE * next;
   this.textContent = 'tile: ' + next + '×';
   this.classList.toggle('active', next !== 1);
+  this.setAttribute('aria-checked', next !== 1 ? 'true' : 'false');
 });
 
 document.querySelectorAll('.clip-pill').forEach(el => el.addEventListener('click', () => {
@@ -2913,7 +3093,7 @@ function buildExportJSON(){
     family: 'foam',
     meta: {
       tool: 'f13ld.foam',
-      version: '0.7.0',
+      version: APP_VERSION,
       timestamp: new Date().toISOString(),
       preset: SEED_MODE_LABELS[state.seedMode] + ' · ' + state.topology
     },
@@ -3006,8 +3186,8 @@ $('exportBtn').addEventListener('click', function(){
   URL.revokeObjectURL(url);
   if(navigator.clipboard) navigator.clipboard.writeText(json).catch(() => {});
   const orig = 'Export JSON';
-  this.textContent = 'Copied + downloaded ✓'; this.style.borderColor = 'var(--good)'; this.style.color = 'var(--good)';
-  setTimeout(() => { this.textContent = orig; this.style.borderColor = ''; this.style.color = ''; }, 1800);
+  this.textContent = 'Copied and downloaded'; this.classList.add('done');
+  setTimeout(() => { this.textContent = orig; this.classList.remove('done'); }, 1800);
 });
 
 // ============================================================================
@@ -3198,8 +3378,8 @@ function foamEstimate(inp){
 let lastEstimate = null;
 function estStale(){
   if(!lastEstimate) return;
-  lastEstimate = null;
-  $('homo-results').classList.add('stale');
+  lastEstimate = null;   // an estimate belongs to one design: results and the export's block go with it
+  $('homo-results').style.display = 'none';
   $('homo-status').textContent = 'design changed — estimate again';
 }
 async function runEstimate(){
@@ -3207,7 +3387,7 @@ async function runEstimate(){
   if(state.seeds.length < 1){ $('homo-status').textContent = 'no seeds'; return; }
   btn.disabled = true; btn.textContent = 'Estimating…';
   $('homo-status').textContent = 'sampling the field at 64³…';
-  const t0 = performance.now();
+  const t0 = performance.now(), rev = designRev;
   try {
     const json = buildExportJSON(), N = 64;
     const jsons = [json];
@@ -3222,6 +3402,7 @@ async function runEstimate(){
       stretch: state.aniso ? [state.anisoX, state.anisoY, state.anisoZ] : [1, 1, 1], cells: state.actualCount, periodic: state.periodic,
       Es, nuS: isFinite(nuS) ? nuS : 0.3
     });
+    if(rev !== designRev){ $('homo-status').textContent = 'design changed — estimate again'; return; }   // the design moved while sampling
     lastEstimate = { est, N, Es, nuS: isFinite(nuS) ? nuS : 0.3, ms: performance.now() - t0 };
     showEstimate(lastEstimate);
   } catch(err){
@@ -3233,7 +3414,6 @@ async function runEstimate(){
 }
 function showEstimate(r){
   const e = r.est, U = stiffUnit([e.Ex, e.Ey, e.Ez, e.Gxy, e.Gxz, e.Gyz]);
-  $('homo-results').classList.remove('stale');
   $('homo-results').style.display = 'block';
   $('homo-status').textContent = r.N + '³ sample · ρ ' + (e.rho * 100).toFixed(2) + ' % · ' + Math.round(r.ms) + ' ms';
   document.querySelectorAll('.stiff-unit').forEach(s => s.textContent = ' ' + U.name);
@@ -3249,7 +3429,7 @@ function showEstimate(r){
     ' · fitted to ' + FOAM_CAL.runs + ' F13LD.lab FFT homogenizations (' + FOAM_CAL.date + '); typically within ±' + Math.round(100 * e.sdAxis) + ' % per axis for this foam.' +
     (e.uncal.length ? '<br><span class="warn">Outside the calibration: ' + e.uncal.join('; ') + '.</span>' : '') +
     (e.notes.length ? '<br><span class="note">' + e.notes.join('; ') + '.</span>' : '') +
-    '<br><span class="note">For a measured answer, open it in F13LD.lab (▦ Lab).</span>';
+    '<br><span class="note">For a measured answer, open it in F13LD.lab (Lab, top right).</span>';
   rebuildStiffnessShader(e.Ex, e.Ey, e.Ez, e.Gxy, e.nu, e.Gxz, e.Gyz);
   $('bell-sub').textContent = 'Log-normal spread: shaded bands = 1σ (±' + Math.round(100 * e.sdAxis) + ' %) and 2σ. Combines the fit scatter, seed-to-seed scatter at ' + state.actualCount +
     ' cells, the open cell-count question' + (e.uncal.length ? ', and the uncalibrated settings above' : '') + '. Small numbers at the edges mark the 1σ range.';
@@ -3267,7 +3447,7 @@ function showEstimate(r){
     (e.factor !== 1 ? ' × ' + e.factor.toFixed(3) + ' (' + [state.seedMode === 'poisson' || state.seedMode === 'random' ? 'seed mode' : null, e.fPlateau !== 1 ? 'plateau borders, ' + Math.round(100 * e.swell) + ' % of the solid' : null].filter(Boolean).join(', ') + ')' : '') +
     '; ρ is the exact field sampled at 64³ (the geometry F13LD.mesh exports). Shear G = E / 2(1 + ν); anisotropy splits E as stretch<sup>' + (state.topology === 'closed' ? FOAM_CAL.closed.m : FOAM_CAL.open.m).toFixed(2) + '</sup>. Calibration: F13LD.lab docs/FOAM_CALIBRATION.md.';
   const b = $('exportBtn');
-  b.textContent = 'Export JSON (+ estimate)'; b.style.borderColor = 'var(--accent-deep)'; b.style.color = 'var(--accent)';
+  b.textContent = 'Export JSON (+ estimate)'; b.classList.add('has-homog');
 }
 // homogenization block, field names as F13LD.tpms so F13LD.mesh / F13LD.lab read it
 function estimateBlock(){
@@ -3379,7 +3559,7 @@ function fmtStiff(v,u){
 }
 function renderBells(axes,vals,sdLog10,U){
   const container=$('bell-rows');container.innerHTML='';
-  const W=120,pad=8,K=10**sdLog10,CURVE_MAX=56,CURVE_MIN=10,LABELS=24;
+  const W=160,pad=8,K=10**sdLog10,CURVE_MAX=56,CURVE_MIN=10,LABELS=34;   // 11-unit labels at about 1:1 in a 2-column grid
   const maxVal=Math.max(...vals.filter(v=>v>0),1e-30);
   const cellH=v=>LABELS+(v>0?Math.max(Math.round(CURVE_MAX*(v/maxVal)),CURVE_MIN):CURVE_MIN);
   const row=document.createElement('div');
@@ -3389,7 +3569,7 @@ function renderBells(axes,vals,sdLog10,U){
   axes.forEach(({label,color},i)=>{
     const mu=vals[i],Hc=cellH(mu);const cell=document.createElement('div');cell.style.cssText='background:var(--card);border-radius:4px;overflow:hidden';
     const lm=Math.log10(mu),lo=lm-3*sdLog10,hi=lm+3*sdLog10,tx=l=>pad+(l-lo)/(hi-lo)*(W-2*pad);
-    const top=13,bot=Hc-11,h=bot-top,g=l=>Math.exp(-0.5*((l-lm)/sdLog10)**2);
+    const top=17,bot=Hc-17,h=bot-top,g=l=>Math.exp(-0.5*((l-lm)/sdLog10)**2);
     const pts=[];for(let k=0;k<=60;k++){const l=lo+k/60*(hi-lo);pts.push([tx(l),bot-g(l)*h*0.88]);}
     const curve=pts.map((p,k)=>(k===0?'M':'L')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
     const band=(a,b)=>{const fp=[];for(let k=0;k<=60;k++){const l=lo+k/60*(hi-lo);if(l<a||l>b)continue;fp.push([tx(l),bot-g(l)*h*0.88]);}
@@ -3400,11 +3580,11 @@ function renderBells(axes,vals,sdLog10,U){
       <path d="${band(lm-sdLog10,lm+sdLog10)}" fill="${hexAlpha(color,0.28)}"/>
       <path d="${curve}" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.9"/>
       <line x1="${px}" y1="${bot}" x2="${px}" y2="${top}" stroke="${color}" stroke-width="1" opacity="0.4" stroke-dasharray="2 2"/>
-      <line x1="${pad}" y1="${bot}" x2="${W-pad}" y2="${bot}" stroke="#333" stroke-width="0.5"/>
-      <text x="${W/2}" y="9" text-anchor="middle" font-size="9" font-weight="500" fill="${color}">${label}</text>
-      <text x="${px}" y="${Hc-3}" text-anchor="middle" font-size="8" fill="${color}" opacity="0.9">${fmt(mu)} ${U.name}</text>
-      <text x="${pad}" y="${Hc-3}" text-anchor="start" font-size="6.5" fill="#666">${fmt(mu/K)}</text>
-      <text x="${W-pad}" y="${Hc-3}" text-anchor="end" font-size="6.5" fill="#666">${fmt(mu*K)}</text>
+      <line x1="${pad}" y1="${bot}" x2="${W-pad}" y2="${bot}" style="stroke:var(--hair-strong)" stroke-width="1"/>
+      <text x="${W/2}" y="12" text-anchor="middle" font-size="11" font-weight="600" fill="${color}">${label}</text>
+      <text x="${px}" y="${Hc-3}" text-anchor="middle" font-size="11" fill="${color}">${fmt(mu)} ${U.name}</text>
+      <text x="${pad}" y="${Hc-3}" text-anchor="start" font-size="11" style="fill:var(--ink-faint)">${fmt(mu/K)}</text>
+      <text x="${W-pad}" y="${Hc-3}" text-anchor="end" font-size="11" style="fill:var(--ink-faint)">${fmt(mu*K)}</text>
     </svg>`;
     row.appendChild(cell);
   });
@@ -3414,7 +3594,7 @@ function renderBells(axes,vals,sdLog10,U){
 // ============================================================================
 // INIT — one seed pass, one bake
 // ============================================================================
-f13View = f13ViewInit({ tool: 'foam', host: document.getElementById('cw'), canvas: canvas, css: 'top:40px' });
+f13View = f13ViewInit({ tool: 'foam', host: document.getElementById('cw'), canvas: canvas });
 initQuad();
 syncSeedModeUI();
 regenerateSeeds();
@@ -3422,6 +3602,145 @@ rebuildShader();
 initBakePipeline();
 runBake();
 requestAnimationFrame(frame);
+
+// ============================================================================
+// LAYOUT — sections one at a time, phone bottom sheet (F13LD template layout.js, from F13LD.tpms v1.4.0)
+// window.F13UI: sections / active / isPhone() / showSection(id) / sectionOf(el) / setSheet('peek'|'full')
+// ============================================================================
+(function(){
+  const UI=window.F13UI=window.F13UI||{};
+  const SECS=[...document.querySelectorAll('.sec[data-section]')].map(s=>s.dataset.section);   // order = DOM order
+  const mq=window.matchMedia('(max-width:899px)');
+  const scroller=document.getElementById('ctrlScroll');
+  const pane=document.getElementById('ctrlPane');
+  const secEl=id=>document.getElementById('sec-'+id);
+  UI.sections=SECS.slice();
+  UI.active=SECS[0];
+  UI.isPhone=()=>mq.matches;
+  function setActive(id){
+    if(!SECS.includes(id)||id===UI.active)return;
+    UI.active=id;
+    document.querySelectorAll('.sb-fallback [data-section]').forEach(b=>b.classList.toggle('on',b.dataset.section===id));
+    if(UI.onSectionChange)try{UI.onSectionChange(id);}catch(e){console.error(e);}
+  }
+  function applySections(){
+    SECS.forEach(s=>secEl(s).classList.toggle('on',s===UI.active));
+    updateFades();
+  }
+  UI.showSection=function(id){
+    if(!SECS.includes(id))return;
+    const changed=id!==UI.active;
+    setActive(id);applySections();
+    if(changed)scroller.scrollTop=0;
+  };
+  UI.scrollToSection=UI.showSection;
+  UI.sectionOf=function(el){const s=el&&el.closest&&el.closest('.sec[data-section]');return s?s.dataset.section:null;};
+  // the column scrolls only when the active section is taller than it; fade only the edges that hide content
+  function updateFades(){
+    const y=scroller.scrollTop,max=scroller.scrollHeight-scroller.clientHeight;
+    scroller.classList.toggle('ft',y>1);
+    scroller.classList.toggle('fb',max-y>1);
+  }
+  scroller.addEventListener('scroll',updateFades,{passive:true});
+  if(window.ResizeObserver){const ro=new ResizeObserver(updateFades);ro.observe(scroller);SECS.forEach(s=>ro.observe(secEl(s)));}
+  document.querySelectorAll('.sb-fallback [data-section]').forEach(b=>b.addEventListener('click',()=>UI.showSection(b.dataset.section)));
+
+  // header height drives the phone viewer height (the header wraps on phones)
+  const hdr=document.querySelector('.f13ld-header');
+  function setHdr(){document.documentElement.style.setProperty('--hdr-h',hdr.offsetHeight+'px');}
+  setHdr();if(window.ResizeObserver)new ResizeObserver(setHdr).observe(hdr);
+
+  // phone bottom sheet: drag the handle between peek (~45dvh) and full (~88dvh)
+  const handle=document.getElementById('sheetHandle');
+  let sheetState='peek';
+  const vh=()=>window.innerHeight;
+  const snapH=s=>Math.round(vh()*(s==='full'?0.88:0.45));
+  function setSheet(s,animate){
+    sheetState=s;
+    if(!animate)pane.classList.add('dragging');
+    pane.style.setProperty('--sheet-h',snapH(s)+'px');
+    if(!animate)requestAnimationFrame(()=>pane.classList.remove('dragging'));
+  }
+  UI.setSheet=s=>{if(s==='peek'||s==='full')setSheet(s,true);};
+  let dragY=null,startH=0,lastY=0,lastT=0,vel=0,moved=false;
+  handle.addEventListener('pointerdown',e=>{
+    if(!mq.matches)return;
+    dragY=e.clientY;lastY=e.clientY;lastT=performance.now();vel=0;moved=false;
+    startH=pane.getBoundingClientRect().height;
+    pane.classList.add('dragging');handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove',e=>{
+    if(dragY===null)return;
+    const dy=e.clientY-dragY;if(Math.abs(dy)>4)moved=true;
+    const h=Math.max(snapH('peek')*0.6,Math.min(snapH('full'),startH-dy));
+    pane.style.setProperty('--sheet-h',h+'px');
+    const t=performance.now();vel=(e.clientY-lastY)/Math.max(1,t-lastT);lastY=e.clientY;lastT=t;
+  });
+  function endDrag(){
+    if(dragY===null)return;
+    dragY=null;pane.classList.remove('dragging');
+    if(!moved){setSheet(sheetState==='peek'?'full':'peek',true);return;}
+    const h=pane.getBoundingClientRect().height,mid=(snapH('peek')+snapH('full'))/2;
+    setSheet(vel<-0.4?'full':vel>0.4?'peek':(h>mid?'full':'peek'),true);
+  }
+  handle.addEventListener('pointerup',endDrag);
+  handle.addEventListener('pointercancel',endDrag);
+  handle.addEventListener('click',e=>{if(e.detail===0&&mq.matches)setSheet(sheetState==='peek'?'full':'peek',true);});   // keyboard
+
+  function applyLayout(){
+    applySections();
+    if(mq.matches)setSheet(sheetState,false);
+    else pane.style.removeProperty('--sheet-h');
+    if(typeof requestRender==='function')requestRender();   // foam draws every frame: nothing to request
+  }
+  mq.addEventListener?mq.addEventListener('change',applyLayout):mq.addListener(applyLayout);
+  window.addEventListener('resize',()=>{if(mq.matches)setSheet(sheetState,false);});
+  applyLayout();
+})();
+
+// S(k) is drawn into a canvas that has no size while its section is hidden: redraw when Seeds is shown.
+F13UI.onSectionChange = id => { if(id === 'seeds') scheduleSk(); };
+
+// ---- help: the engine has no "show control" action, so each drawer card whose control lives on the
+// page gets one here: it switches to that section, brings the control into view and flashes it ----
+const HELP_TARGET = {topology: '#grp-topo', cells: '#grp-cells', cellsize: '#grp-cellsize', thickness: '#grp-thick', plateauk: '#grp-plateauK',
+  border: '#grp-border', edge: '#grp-edge', fillet: '#grp-fillet', node: '#grp-node', seeds: '#grp-seedmode', periodic: '#grp-periodic',
+  regularity: '#grp-spacing', lloyd: '#grp-lloyd', ratio: '#grp-ratio', disorder: '#grp-jitter', sk: '#sk-wrap', rng: '#grp-rng',
+  aniso: '#grp-aniso', overlay: '#seedsOverlay', clip: '#clipOverlay', quality: '#qualityOverlay', estimate: '#runBtn', export: '#exportBtn'};
+F13UI.revealControl = function(sel){
+  const el = typeof sel === 'string' ? document.querySelector(sel) : sel;
+  if(!el) return false;
+  const sec = F13UI.sectionOf(el);
+  if(sec) F13UI.showSection(sec);
+  if(sec && F13UI.isPhone() && F13UI.setSheet) F13UI.setSheet('full');
+  if(!el.getClientRects().length) return false;                    // hidden in this mode (e.g. border outside wet)
+  const row = el.closest('.sc-group') || el;
+  const reduce = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  row.scrollIntoView({block: 'center', behavior: reduce ? 'auto' : 'smooth'});
+  row.classList.remove('f13w-flash'); void row.offsetWidth; row.classList.add('f13w-flash');
+  setTimeout(() => row.classList.remove('f13w-flash'), 1400);
+  return true;
+};
+(function(){
+  const SHOW_ICON = '<svg class="ic sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2.4M8 11.8v2.4M1.8 8h2.4M11.8 8h2.4"/></svg>';
+  function addShowButtons(){
+    Object.keys(HELP_TARGET).forEach(id => {
+      const h = document.querySelector('#f13h-card-' + id + ' .f13h-card-h');
+      if(!h || h.querySelector('.f13w-show')) return;
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'f13w-show'; b.innerHTML = SHOW_ICON + '<span>show</span>';
+      b.setAttribute('aria-label', 'Show this control');
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        const s = document.querySelector('.f13h-scrim.open'); if(s) s.click();   // close the drawer the engine's own way
+        F13UI.revealControl(HELP_TARGET[id]);
+      });
+      h.appendChild(b);
+    });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(addShowButtons, 0));
+  else setTimeout(addShowButtons, 0);
+})();
 </script>
 
 <!-- ===================================================================== -->
@@ -3443,7 +3762,7 @@ requestAnimationFrame(frame);
     --f13h-border:      #2a2a3a;
     --f13h-border-hi:   #3a3a5a;
     --f13h-text:        #e0e0ff;
-    --f13h-dim:         #8a8a9e;
+    --f13h-dim:         #7c8aaa;
     --f13h-bright:      #f0f1ff;
     --f13h-glow:        rgba(232,212,162,0.22);
   }
@@ -3564,10 +3883,10 @@ requestAnimationFrame(frame);
         what:'How many seeds (and so cells) fill the repeating cube. The slider takes fine steps at low counts. Lattice modes round to the nearest whole lattice (down to a single cube), and the actual count shows beside the target when they differ.',
         see:'More cells = smaller pores packed tighter; fewer = larger, open cells.',
         why:'Sets pore size for a given cube; the mm read-out shows the cube edge at your cell size.' },
-      { id:'cellsize', label:'cell size', range:'mm · display only', anchor:{row:'#cellSizeMM'},
+      { id:'cellsize', label:'cell size', range:'mm', anchor:{row:'#cellSizeMM'},
         what:'Real-world average cell diameter.',
         see:'No change to the shape — rescales the mm read-outs beside the sliders.',
-        why:'Anchors the dimensionless model to physical units; does not touch the exported JSON.' },
+        why:'Anchors the dimensionless model to physical units; sets tile_mm (the cube edge in mm) in the exported JSON.' },
       { id:'thickness', label:'thickness', range:'0.02 – 0.50', anchor:{row:'#sThick'},
         what:'Half-thickness of walls (closed) or strut radius (open / plateau), measured as a true distance from the wall mid-plane or strut axis. The mm read-out shows the full wall or the strut diameter.',
         see:'Walls and struts fatten or thin evenly — the same thickness everywhere, including near nodes and with stretch on.',
@@ -3618,7 +3937,7 @@ requestAnimationFrame(frame);
         what:'Random nudge of each lattice seed, as a fraction of the mean seed spacing.',
         see:'The lattice breaks up gradually. Kelvin keeps its 14-faced cells up to about 0.1; past about 0.5 any lattice looks random.',
         why:'A controlled path from ordered to stochastic foam with the same cell count.' },
-      { id:'sk', label:'structure factor S(k)', anchor:{into:'#sk-wrap'},
+      { id:'sk', label:'structure factor S(k)', anchor:{into:'#skTitle'},
         what:'How much the seed density fluctuates at each wavelength, from the seeds themselves (periodic seeds only).',
         see:'1 = random. A dip toward 0 at the left (long wavelengths) means hyperuniform: large-scale fluctuations suppressed.',
         why:'A direct read of how ordered a disordered foam is at large scales.' },
@@ -3648,14 +3967,14 @@ requestAnimationFrame(frame);
         why:'Preview fidelity only — the exported recipe is the same at any setting.' }
     ]},
     { title:'Stiffness', items:[
-      { id:'estimate', label:'Estimate stiffness · E_s · ν_s', anchor:{row:'#runBtn'},
+      { id:'estimate', label:'Estimate stiffness · E_s · ν_s', anchor:{into:'#estLabel'},
         what:'Measures the solid fraction of the exact foam (64³ sample) and estimates Ex, Ey, Ez, the shear moduli and Poisson\u2019s ratio from laws fitted to 67 F13LD.lab FFT homogenizations of this same geometry.',
         see:'A directional stiffness surface, per-axis values, a likely range for each, and a note when a setting is outside the calibration (ordered lattices, wet foam, fillet / node, two-size and symmetric seeds, uniform-random seeds, density outside the fitted range).',
-        why:'Compare foam designs and size them early. For a measured answer, open it in F13LD.lab (▦ Lab).' }
+        why:'Compare foam designs and size them early. For a measured answer, open it in F13LD.lab (the Lab button, top right).' }
     ]},
     { title:'Handoff', items:[
       { id:'export', label:'Export JSON / Queue / Mesh / Lab',
-        what:'Saves the current recipe as JSON, or hands it on from the header: ⊕ Queue adds it to your F13LD.queue (▾ picks which queue), ⬡ Mesh opens it in F13LD.mesh, ▦ Lab opens it in F13LD.lab.',
+        what:'Saves the current recipe as JSON, or hands it on from the header: Queue adds it to your F13LD.queue (the arrow beside it picks which queue), Mesh opens it in F13LD.mesh, Lab opens it in F13LD.lab.',
         see:'The recipe records every seed position plus the generator settings, topology and thickness. F13LD.mesh needs a periodic foam; the handoff explains and offers to turn periodic on if it isn\u2019t.',
         why:'The bridge from foam design to meshing and printing.' }
     ]}
@@ -3810,7 +4129,7 @@ requestAnimationFrame(frame);
         return o.toDataURL('image/webp',0.72);
       }catch(e){ return null; }
     };
-    var RIGHT='.fh-right', ANCHOR='.fh-mesh-btn', LABEL='⊕ Queue';
+    var RIGHT='.fh-right', ANCHOR='.fh-mesh-btn', LABEL='Queue';   // drawn icon comes from CSS (.f13ldq-main::before)
     var TIP='Add to queue — save this recipe to an F13LD.queue list you can open on any device';
     function tipQueue(){
       var m=document.querySelector(RIGHT+' .f13ldq-main'), c=document.querySelector(RIGHT+' .f13ldq-caret');
