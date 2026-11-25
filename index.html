@@ -259,7 +259,7 @@ sub,sup{font-size:11px;line-height:0}   /* subscripts stay at the 11 px floor */
 .aniso-row .sl>input[type=range]{grid-column:2;grid-row:1}
 #grp-ax>label{color:var(--axis-x)} #grp-ay>label{color:var(--axis-y)} #grp-az>label{color:var(--axis-z)}
 #sAnisoX{accent-color:var(--axis-x)} #sAnisoY{accent-color:var(--axis-y)} #sAnisoZ{accent-color:var(--axis-z)}
-/* viewer: seeds / tile at top right, quality + bake read-out bottom right */
+/* viewer: seeds / tile at top right, bake read-out bottom right */
 .vw-tr{position:absolute;right:10px;top:10px;z-index:14;display:flex;gap:6px}
 .vw-br{position:absolute;right:10px;bottom:10px;z-index:14;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:calc(100% - 20px)}
 .ovl-btn{position:relative;display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 12px;background:oklch(0.13 0.012 265 / 0.82);border:1px solid var(--hair);border-radius:12px;color:var(--ink-dim);font:500 13px var(--lq-font);white-space:nowrap;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:color .15s var(--ease),border-color .15s var(--ease)}
@@ -267,9 +267,6 @@ sub,sup{font-size:11px;line-height:0}   /* subscripts stay at the 11 px floor */
 .ovl-btn.active{color:var(--accent);border-color:var(--accent-line)}
 .ovl-btn .count{font:500 13px var(--lq-mono);color:var(--ink-faint);font-variant-numeric:tabular-nums}
 .ovl-btn.active .count{color:var(--accent)}
-#qualityOverlay{display:flex;align-items:center;gap:2px;padding:0 4px;height:40px;background:oklch(0.13 0.012 265 / 0.82);border:1px solid var(--hair);border-radius:12px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
-#qualityOverlay .ovl-btn{height:30px;padding:0 9px;background:transparent;border:1px solid transparent;border-radius:8px;-webkit-backdrop-filter:none;backdrop-filter:none}
-#qualityOverlay .ovl-btn.active{background:oklch(1 0 0 / 0.06);color:var(--accent)}
 #bakeInfo{font:400 11px/1.4 var(--lq-mono);color:var(--ink-dim);background:oklch(0.13 0.012 265 / 0.82);padding:5px 10px;border-radius:10px;border:1px solid var(--hair);letter-spacing:0.02em;max-width:100%;text-align:right;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 #bakeInfo.err{color:var(--warn)}
 #meshWarn{display:none;position:absolute;left:10px;right:10px;top:64px;z-index:16;align-items:center;gap:6px 10px;flex-wrap:wrap;padding:10px 12px;font-size:13px;line-height:1.45;color:var(--ink);background:oklch(0.17 0.014 265 / 0.95);border:1px solid var(--hair-strong);border-radius:12px;box-shadow:0 8px 24px oklch(0 0 0 / 0.4);max-width:520px}
@@ -386,11 +383,6 @@ sub,sup{font-size:11px;line-height:0}   /* subscripts stay at the 11 px floor */
         </div>
         <div class="vw-br">
           <div id="bakeInfo" role="status">initializing …</div>
-          <div id="qualityOverlay" role="group" aria-label="Preview quality">
-            <button class="ovl-btn hit" id="btnQLow" data-q="low" aria-pressed="false">Low</button>
-            <button class="ovl-btn hit active" id="btnQMed" data-q="medium" aria-pressed="true">Med</button>
-            <button class="ovl-btn hit" id="btnQHigh" data-q="high" aria-pressed="false">High</button>
-          </div>
         </div>
       </div>
     </section>
@@ -3858,7 +3850,8 @@ function f13ViewInit(cfg){
 }
 // ==== /F13LD-VIEW ====
 // preserveDrawingBuffer: the F13LD.queue snapshot hook reads the canvas back.
-const gl = canvas.getContext('webgl2', {preserveDrawingBuffer: true});
+// antialias:false — it does nothing for a ray-marched quad, and blitting into an MSAA canvas errors.
+const gl = canvas.getContext('webgl2', {preserveDrawingBuffer: true, antialias: false});
 if(!gl){
   canvas.parentElement.innerHTML = '<p style="color:#888;padding:40px;text-align:center">This tool needs WebGL2, which this browser or GPU does not provide.</p>';
   throw new Error('WebGL2 unavailable');
@@ -3870,26 +3863,28 @@ function $(id){ return document.getElementById(id); }
 function storeGet(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : v; } catch(e){ return d; } }
 function storeSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
 
-// Quality tiers. Bake resolution sets surface cleanness (aim for ≥ 2 voxels
-// across the thinnest feature); step count sets raymarch fidelity.
-const QUALITY_TIERS = {
-  low:    { bake: 128, steps: 192 },   // step counts are caps: with safe long
-  medium: { bake: 160, steps: 256 },   // steps most rays finish far sooner, so
-  high:   { bake: 192, steps: 384 }    // raising them costs little
-};
-let currentQuality = 'medium';
+// ── Render quality is automatic (see "Adaptive render quality" below) ──────────
+// Bake resolution is fixed: 192³ for the full bake (the old "High"), 96³ for the
+// preview bake while a re-baking slider is dragged. Ray-march steps and the hit
+// threshold are uniforms, so quality never recompiles anything.
+const BAKE_FULL = 192, BAKE_PREVIEW = 96;
+const Q_INT = {steps: 160, thresh: 1.0}, Q_REST = {steps: 384, thresh: 1.0};
+const MAX_STEPS = 384;            // constant loop bound in the shader; uSteps breaks out early
+const IDLE_MS = 150, DPR_MAX = 2;
 
 // The viewer fills its pane (CSS sets the canvas box); the drawing buffer follows it.
+// It is fixed at CSS size × min(DPR, 2) and only changes when the pane really changes size,
+// never between quality tiers. Returns true when the buffer was resized.
 function resize(){
   const host = canvas.parentElement;
   const cssW = Math.max(1, host.clientWidth), cssH = Math.max(1, host.clientHeight);
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const dpr = Math.min(window.devicePixelRatio || 1, DPR_MAX);
   const w = Math.round(cssW * dpr), h = Math.round(cssH * dpr);
-  if(canvas.width !== w || canvas.height !== h){ canvas.width = w; canvas.height = h; }
+  if(canvas.width !== w || canvas.height !== h){ canvas.width = w; canvas.height = h; return true; }
+  return false;
 }
 resize();
-window.addEventListener('resize', resize);
-if(window.ResizeObserver) new ResizeObserver(resize).observe(canvas.parentElement);   // sheet, rail and breakpoint changes
+// (the listeners are added with the render loop below: a resize clears the buffer, so it must also request a draw)
 
 // ============================================================================
 // STATE
@@ -4909,6 +4904,7 @@ function applySeeds(r){
   updateMMHints();
   updateEq();
   scheduleSk();
+  requestRender();   // seed dots
 }
 function regenerateSeeds(){ applySeeds(FoamSeeds.generate(seedOpts())); }
 
@@ -5363,39 +5359,46 @@ function uploadSeedsBinned(a){
   return {G, B, cs, rm: cs / smax};
 }
 
+// One field texture per bake resolution (96³ preview, 192³ full), allocated once and reused, so
+// switching between them costs no reallocation. `fieldTex` / `fieldRes` always name the texture on
+// screen; a bake writes into its own resolution's texture and only then makes it the displayed one.
+const fieldTexs = {};
 function ensureFieldTexture(res){
-  if(!(fieldTex && fieldRes === res)){
-    if(fieldTex) gl.deleteTexture(fieldTex);
-    fieldTex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_3D, fieldTex);
+  let tex = fieldTexs[res];
+  if(!tex){
+    tex = fieldTexs[res] = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_3D, tex);
     gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA16F, res, res, res, 0, gl.RGBA, gl.HALF_FLOAT, null);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    fieldRes = res;
   }
   // Periodic fields wrap so linear filtering blends across the seam (no tile seams).
-  gl.bindTexture(gl.TEXTURE_3D, fieldTex);
+  gl.bindTexture(gl.TEXTURE_3D, tex);
   const w = state.periodic ? gl.REPEAT : gl.CLAMP_TO_EDGE;
   gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, w);
   gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, w);
   gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, w);
+  return tex;
 }
 
 function runBake(){
   bakeTimer = null;
+  if(glLost || gl.isContextLost()) return;   // the restore handler re-bakes
   if(!bakeAvailable){ setBadge(bakeError || 'bake unavailable', true); return; }
   if(state.seeds.length < 1){ setBadge('no seeds', true); return; }
   // New seeds are on their way from the worker; it bakes when they land.
   if(_seedPending){ setBadge('generating seeds …'); return; }
   const t0 = performance.now();
-  const res = QUALITY_TIERS[currentQuality].bake;
+  const preview = bakePreview;                 // drag in progress: 96³; otherwise the full 192³
+  const res = preview ? BAKE_PREVIEW : BAKE_FULL;
+  bakeFullPending = preview;                   // a preview on screen owes a full bake on release
   const a = state.aniso ? [state.anisoX, state.anisoY, state.anisoZ] : [1, 1, 1];
 
   // Unbind the field from unit 0 so it can't be read while it's being written.
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_3D, null);
   const grid = uploadSeedsBinned(a);
-  ensureFieldTexture(res);
+  const bakeTex = ensureFieldTexture(res);
   gl.bindTexture(gl.TEXTURE_3D, null);
 
   gl.useProgram(bakeProg);
@@ -5421,7 +5424,7 @@ function runBake(){
   gl.bindFramebuffer(gl.FRAMEBUFFER, bakeFBO);
   gl.viewport(0, 0, res, res);
   for(let z = 0; z < res; z++){
-    gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, fieldTex, 0, z);
+    gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, bakeTex, 0, z);
     gl.uniform1f(bakeU.uZ, z);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
@@ -5433,9 +5436,12 @@ function runBake(){
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, null);
 
   if(prog){ gl.useProgram(prog); bindQuad(prog); }
+  fieldTex = bakeTex; fieldRes = res;          // the new field goes on screen only now; until then the last bake stays
   bakeReady = true;
   const ms = Math.round(performance.now() - t0);
-  setBadge('baked · ' + res + '³ · ' + state.actualCount + ' cells · ' + ms + ' ms');
+  bakeStats.last = {res, ms, preview}; bakeStats[preview ? 'preview' : 'full']++;
+  setBadge((preview ? 'preview · ' : 'baked · ') + res + '³ · ' + state.actualCount + ' cells · ' + ms + ' ms');
+  requestRender();
 }
 
 function setBadge(text, err){
@@ -5446,11 +5452,32 @@ function setBadge(text, err){
 
 const _syncPx = new Float32Array(4);
 let bakeTimer = null;
+const bakeStats = {preview: 0, full: 0, last: null};   // tests / profiling
+// Re-baking sliders (fillet, node, edge, border, stretch, and the seed-regen sliders): while one is
+// being dragged (`bakePreview`) the field is baked at 96³ — an eighth of the work — and shown at once;
+// the full 192³ bake runs when the drag ends (`change`, a release, or about a second without input).
+// Nothing else (toggles, mode changes, typed values, seed worker results, load) previews: it bakes full.
+let bakePreview = false, bakeFullPending = false, bakeRelease = null;
 function scheduleBake(){
   if(bakeTimer) clearTimeout(bakeTimer);
-  setBadge('baking …');
+  setBadge(bakePreview ? 'preview …' : 'baking …');
   bakeTimer = setTimeout(runBake, 30);   // let the badge paint before the GPU blocks
 }
+// A range input moved: from here until it is released, bakes are previews.
+function bakeDragTick(){
+  bakePreview = true;
+  clearTimeout(bakeRelease);
+  bakeRelease = setTimeout(bakeDragEnd, 1000);   // a lost release must not leave the preview on screen
+}
+function bakeDragEnd(){
+  clearTimeout(bakeRelease); bakeRelease = null;
+  if(!bakePreview) return;
+  bakePreview = false;
+  // A regen or a seed worker still in flight bakes full when it lands; otherwise bake now.
+  if(bakeFullPending && !regenTimer && !_seedPending) scheduleBake();
+}
+document.addEventListener('input', e => { if(e.target && e.target.type === 'range') bakeDragTick(); }, true);
+document.addEventListener('change', e => { if(e.target && e.target.type === 'range') bakeDragEnd(); }, true);
 
 // ============================================================================
 // LIVE SHADER — raymarch of the foam field sampled from the baked texture
@@ -5473,7 +5500,7 @@ function baseExpr(){
 }
 function extraExpr(){
   if(state.topology === 'plateau')
-    return toFloat(state.plateauK) + ' * (1.0 - smoothstep(0.0, 0.35, d.z))';
+    return 'uPlateauK * (1.0 - smoothstep(0.0, 0.35, d.z))';   // k is a uniform: dragging it never recompiles
   return '0.0';
 }
 // Smallest feature for raymarch thresholds: strut radius, or for wet foam a
@@ -5495,13 +5522,15 @@ function marchConsts(){
   return {M: 1, invLip: 0.8 / (1 + LE)};
 }
 
+// The generated source depends only on structure: topology (field expression) and the wet flag.
+// Thickness, plateau k, feature size, ray steps and hit threshold are uniforms (uThick, uPlateauK,
+// uFeat, uSteps, uThreshK). The loop bound is the constant MAX_STEPS with an early `break` on
+// uSteps — a uniform loop bound makes the loop data-dependent and measured ~1.4× slower per pixel.
 function buildFrag(){
-  const steps = QUALITY_TIERS[currentQuality].steps;
-  const T = toFloat(state.thickness);
   const wet = state.topology === 'wet';
   const surface = wet ? `
   return b;` : `
-  return b - ${T} - E;`;
+  return b - uThick - E;`;
 
   return `#version 300 es
 precision highp float;
@@ -5522,6 +5551,11 @@ uniform float uClipPos;
 uniform float uClipSide;
 uniform float uMarchM;
 uniform float uInvLip;
+uniform float uThick;
+uniform float uPlateauK;
+uniform float uFeat;
+uniform float uThreshK;
+uniform int uSteps;
 
 vec4 sampleD(vec3 p){
   // Tile mode: fold p back into the canonical cube so the baked field repeats.
@@ -5547,7 +5581,7 @@ float foamField(vec3 p){
 float foamMarch(vec3 p){
   float b, E;
   terms(p, b, E);
-  return (b - uMarchM * (${wet ? '0.0' : T} + E)) * uInvLip;
+  return (b - uMarchM * (${wet ? '0.0' : 'uThick'} + E)) * uInvLip;
 }
 
 float boxSDF(vec3 p, float H){
@@ -5593,9 +5627,9 @@ void main(){
   vec3 bgCol = mix(vec3(0.07), vec3(0.03), r*r);
   vec4 bg = vec4(bgCol, 1.0);
 
-  float featureSize = max(${toFloat(featureT())}, 0.04);
+  float featureSize = max(uFeat, 0.04);
   float camScale = clamp(zoom / (16.0 * uTile), 0.15, 1.0);
-  float thresh = featureSize * 0.010 * camScale;
+  float thresh = featureSize * 0.010 * camScale * uThreshK;
   float fineStep = featureSize * 0.30 * camScale;   // cap for steps right at the surface
   // Normal FD must cross at least one voxel boundary to see the gradient.
   float nrmE = max(featureSize * 0.20, uVoxelSize * 1.5) * camScale;
@@ -5625,7 +5659,8 @@ void main(){
   float t = max(tEn, 0.001);
   bool hit = false;
   if(tEn <= tEx){
-    for(int i = 0; i < ${steps}; i++){
+    for(int i = 0; i < ${MAX_STEPS}; i++){
+      if(i >= uSteps) break;
       vec3 p = ro + rd*t;
       float m = marchSDF(p);
       if(m > thresh){
@@ -5671,18 +5706,35 @@ void main(){
 }`;
 }
 
-let prog = null, U = {};
+// Programs are cached by their generated source: switching topology back and forth recompiles
+// nothing, and a call whose source is unchanged (thickness, plateau k, border, quality) compiles
+// nothing at all. drawStats.compile counts the real compiles.
+const drawStats = {int: 0, rest: 0, glyph: 0, compile: 0};   // frame / compile counters (tests / profiling)
+const SHADER_UNIFORMS = ['res','rot','zoom','uField','uHalf','uBakeReady','uVoxelSize','uTile','uPeriodic','uClipAxis','uClipPos','uClipSide','uMarchM','uInvLip','uThick','uPlateauK','uFeat','uThreshK','uSteps'];
+const progCache = new Map();   // source → {p, U}
+let prog = null, U = {}, progSrc = '';
 function rebuildShader(){
-  const p = linkProgram(VERT, buildFrag());
-  if(!p) return;
-  if(prog) gl.deleteProgram(prog);
-  prog = p;
-  gl.useProgram(prog);
-  bindQuad(prog);
-  ['res','rot','zoom','uField','uHalf','uBakeReady','uVoxelSize','uTile','uPeriodic','uClipAxis','uClipPos','uClipSide','uMarchM','uInvLip']
-    .forEach(n => U[n] = gl.getUniformLocation(prog, n));
-  gl.uniform1i(U.uField, 0);
+  const src = buildFrag();
+  if(src !== progSrc || !prog){
+    let ent = progCache.get(src);
+    if(!ent){
+      const p = linkProgram(VERT, src);
+      if(!p) return;
+      drawStats.compile++;
+      ent = {p, U: {}};
+      SHADER_UNIFORMS.forEach(n => ent.U[n] = gl.getUniformLocation(p, n));
+      progCache.set(src, ent);
+      if(progCache.size > 6){   // drop the oldest program that is not the one going live
+        for(const [k, e] of progCache){ if(k !== src){ gl.deleteProgram(e.p); progCache.delete(k); break; } }
+      }
+    }
+    prog = ent.p; U = ent.U; progSrc = src;
+    gl.useProgram(prog);
+    bindQuad(prog);
+    gl.uniform1i(U.uField, 0);
+  }
   updateEq();
+  requestRender();
 }
 
 // ============================================================================
@@ -5754,11 +5806,11 @@ function applyScrub(cx, cy){
 
 const touchDist = ts => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
 canvas.addEventListener('mousedown', e => {
-  lx = e.clientX; ly = e.clientY; autoRot = false;
+  lx = e.clientX; ly = e.clientY; autoRot = false; kick();
   if(hitHandle(e.clientX, e.clientY)) scrub = true; else drag = true;
 });
 canvas.addEventListener('touchstart', e => {
-  autoRot = false; e.preventDefault();
+  autoRot = false; kick(); e.preventDefault();
   if(e.touches.length >= 2){ pinch = {d0: touchDist(e.touches) || 1, z0: camZoom}; drag = false; scrub = false; return; }
   lx = e.touches[0].clientX; ly = e.touches[0].clientY;
   if(hitHandle(lx, ly)) scrub = true; else drag = true;
@@ -5768,28 +5820,29 @@ canvas.addEventListener('touchend', e => {
   // one finger left after a pinch: keep rotating from where it is, no jump
   if(e.touches.length === 1){ lx = e.touches[0].clientX; ly = e.touches[0].clientY; drag = true; scrub = false; }
 }, {passive: true});
-window.addEventListener('mouseup', () => { drag = false; scrub = false; });
-window.addEventListener('touchend', e => { if(!e.touches || e.touches.length === 0){ drag = false; scrub = false; pinch = null; } });
+window.addEventListener('mouseup', () => { drag = false; scrub = false; requestRender(); });
+window.addEventListener('touchend', e => { if(!e.touches || e.touches.length === 0){ drag = false; scrub = false; pinch = null; requestRender(); } });
 window.addEventListener('mousemove', e => {
   if(scrub) applyScrub(e.clientX, e.clientY);
   else if(drag) applyDelta(e.clientX - lx, e.clientY - ly);
   else return;
   lx = e.clientX; ly = e.clientY;
+  kick();
 });
 window.addEventListener('touchmove', e => {
   if(pinch && e.touches.length >= 2){
     camZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinch.z0 * pinch.d0 / (touchDist(e.touches) || 1)));
-    e.preventDefault(); return;
+    kick(); e.preventDefault(); return;
   }
   if(!scrub && !drag) return;
   const t = e.touches[0];
   if(scrub) applyScrub(t.clientX, t.clientY); else applyDelta(t.clientX - lx, t.clientY - ly);
   lx = t.clientX; ly = t.clientY;
-  e.preventDefault();
+  kick(); e.preventDefault();
 }, {passive: false});
 canvas.addEventListener('wheel', e => {
   camZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, camZoom * Math.exp(e.deltaY * 0.0012)));
-  e.preventDefault();
+  kick(); e.preventDefault();
 }, {passive: false});
 
 // ============================================================================
@@ -5799,9 +5852,10 @@ const AXIS_COLS = ['#22d3ee', '#e879f9', '#facc15'];
 function beginOverlay(w, h){
   const cv = $('axisCanvas');
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
+  if(cv.width !== bw || cv.height !== bh){ cv.width = bw; cv.height = bh; }   // resizing clears; only when the pane changed
   const ctx = cv.getContext('2d');
-  ctx.scale(dpr, dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
   return ctx;
 }
@@ -6011,15 +6065,19 @@ function bindRange(id, key, fmt, onChange){
   });
 }
 const f2 = v => v.toFixed(2), fi = v => String(Math.round(v));
+// Structure changes (topology) go through rebuildShader, which compiles only when the generated
+// source differs. Thickness and plateau k are uniforms: a drag just updates the equation read-outs
+// and asks for a frame.
 const shaderChange = () => { rebuildShader(); updateMMHints(); };
+const uniformChange = () => { updateEq(); updateMMHints(); requestRender(); };
 
-bindRange('sThick', 'thickness', f2, shaderChange);
-bindRange('sPlateauK', 'plateauK', f2, shaderChange);
+bindRange('sThick', 'thickness', f2, uniformChange);
+bindRange('sPlateauK', 'plateauK', f2, uniformChange);
 // Fillet, node and border change the baked distances, so they re-bake.
 const bakeChange = () => { scheduleBake(); updateEq(); updateMMHints(); };
 bindRange('sFillet', 'fillet', f2, bakeChange);
 bindRange('sNode', 'node', f2, bakeChange);
-bindRange('sBorder', 'border', f2, () => { scheduleBake(); shaderChange(); updateEq(); });
+bindRange('sBorder', 'border', f2, () => { scheduleBake(); uniformChange(); });   // feature size is a uniform; the border is baked
 bindRange('sEdge', 'edgeMin', v => v.toFixed(3), bakeChange);
 bindRange('sRatio', 'sizeRatio', f2, scheduleRegen);
 bindRange('sLarge', 'largeFraction', f2, scheduleRegen);
@@ -6075,13 +6133,6 @@ function syncTopologyUI(){
   $('grp-node').classList.toggle('hidden', wet);
 }
 syncTopologyUI();
-
-document.querySelectorAll('#qualityOverlay .ovl-btn').forEach(btn => btn.addEventListener('click', () => {
-  document.querySelectorAll('#qualityOverlay .ovl-btn').forEach(b => { b.classList.toggle('active', b === btn); b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
-  currentQuality = btn.dataset.q;
-  rebuildShader();   // step count is compiled in
-  scheduleBake();    // bake resolution follows quality
-}));
 
 // Switch buttons (.sw): class + aria-checked carry the state, .sw-l the on / off word.
 function setToggle(el, on, text){
@@ -6199,7 +6250,7 @@ function buildExportJSON(){
     domain: {
       world: [DOMAIN_MIN, DOMAIN_MAX],
       periodic: state.periodic,
-      bake_res: QUALITY_TIERS[currentQuality].bake
+      bake_res: BAKE_FULL
     },
     seeds: {
       mode: state.seedMode,
@@ -6292,44 +6343,224 @@ $('exportBtn').addEventListener('click', function(){
 // ============================================================================
 // RENDER LOOP
 // ============================================================================
-let lastTs = 0;
-function frame(ts){
-  const dt = Math.min((ts - lastTs) / 1000, 0.05);
-  lastTs = ts;
-  if(autoRot) applyDelta(dt * 50, 0);
-  rotMat = orthonormalize(rotMat);
-  if(prog){
-    gl.useProgram(prog);
-    // Rebind the field every frame: the bake pass uses the same texture unit.
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_3D, fieldTex);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.uniform2f(U.res, canvas.width, canvas.height);
-    gl.uniformMatrix3fv(U.rot, false, new Float32Array(rotMat));
-    gl.uniform1f(U.zoom, camZoom);
-    gl.uniform1f(U.uHalf, DOMAIN_HALF);
-    gl.uniform1f(U.uBakeReady, bakeReady && fieldTex ? 1 : 0);
-    gl.uniform1f(U.uVoxelSize, fieldRes > 0 ? DOMAIN_SIZE / fieldRes : 0.1);
-    gl.uniform1f(U.uTile, state.tile);
-    gl.uniform1f(U.uPeriodic, state.periodic ? 1 : 0);
-    gl.uniform1f(U.uClipAxis, clipState.axis);
-    gl.uniform1f(U.uClipPos, clipState.pos);
-    gl.uniform1f(U.uClipSide, clipState.side);
-    const mc = marchConsts();
-    gl.uniform1f(U.uMarchM, mc.M);
-    gl.uniform1f(U.uInvLip, mc.invLip);
-    if(f13View) f13View.apply(gl, prog);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+// ── Adaptive render quality (render-quality.md, from F13LD.tpms) ──────────────
+// Ray-march steps and the hit threshold are uniforms, so quality never recompiles.
+// While the user orbits, zooms, drags the clip handle, edits a control (and while auto-rotate
+// runs) frames use Q_INT, rendered into an offscreen framebuffer at an adaptive scale (AQ.scale,
+// adapted to hold ~60 fps) and upscaled to the canvas with blitFramebuffer (LINEAR). ~150 ms
+// after the last interaction one rest frame (Q_REST: 384 steps, shadows) is drawn at full canvas
+// resolution, in strips over several frames, and blitted once. Rendering is on demand: the loop
+// sleeps until something changes (requestRender / kick).
+const AQ = {scale: 0.7, min: 0.4, max: 0.85, cap: 0.85, ema: 0, prev: 0, vsync: 16.7, lastTick: 0, pxCost: 0};   // interactive render scale
+let renderDirty = true, refinePending = false, lastInteract = 0, lastTs = 0, loopOn = false, drawingInt = false, glLost = false;
+function wakeLoop(){ if(!loopOn && !glLost){ loopOn = true; lastTs = 0; requestAnimationFrame(frame); } }
+function requestRender(){ renderDirty = true; wakeLoop(); }
+function kick(){ lastInteract = performance.now(); renderDirty = true; wakeLoop(); }
+// A resize clears the drawing buffer, so every size change also asks for a frame.
+window.addEventListener('resize', requestRender);
+if(window.ResizeObserver) new ResizeObserver(requestRender).observe(canvas.parentElement);   // sheet, rail and breakpoint changes
+// Any edit to a control counts as interaction; a click may flip a view switch (seeds, tile, clip, view menu).
+document.addEventListener('input', kick, true);
+document.addEventListener('change', kick, true);
+document.addEventListener('click', requestRender, true);
+
+// Offscreen colour target for interactive frames, allocated at AQ.max of the canvas size so scale
+// changes only move the viewport (no reallocation); reallocated on canvas resize only.
+const lowFB = {fb: null, rb: null, w: 0, h: 0};
+function ensureLowFB(){
+  const w = Math.max(1, Math.ceil(canvas.width * AQ.max)), h = Math.max(1, Math.ceil(canvas.height * AQ.max));
+  if(lowFB.fb && lowFB.w === w && lowFB.h === h) return true;
+  if(!lowFB.fb){ lowFB.fb = gl.createFramebuffer(); lowFB.rb = gl.createRenderbuffer(); }
+  gl.bindRenderbuffer(gl.RENDERBUFFER, lowFB.rb);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, w, h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, lowFB.fb);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, lowFB.rb);
+  const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  lowFB.w = w; lowFB.h = h;
+  if(!ok){ gl.deleteFramebuffer(lowFB.fb); gl.deleteRenderbuffer(lowFB.rb); lowFB.fb = null; }
+  return ok;
+}
+// Adaptive scale: frame-to-frame time of consecutive interactive frames (EMA). Slower than ~20 ms
+// (or 1.6 display frames) lowers the scale; at the display rate (≤ ~12 ms, or 1.2 display frames)
+// it creeps back up, never above the last scale that was too slow.
+function aqSample(ts){
+  if(AQ.prev && ts - AQ.prev < 250){
+    const d = ts - AQ.prev; AQ.ema = AQ.ema ? AQ.ema * 0.7 + d * 0.3 : d;
+    AQ.pxCost = AQ.ema / Math.max(1, canvas.width * canvas.height * AQ.scale * AQ.scale);   // ms per interactive pixel (upper bound: includes vsync wait)
+    const fast = Math.max(12, AQ.vsync * 1.2), slow = Math.max(20, AQ.vsync * 1.6);
+    if(AQ.ema > slow){ AQ.cap = Math.max(AQ.min, AQ.scale - 0.03); AQ.scale = Math.max(AQ.min, AQ.scale * 0.88); AQ.ema = 0; }
+    else if(AQ.ema < fast && AQ.scale < AQ.cap) AQ.scale = Math.min(AQ.cap, AQ.scale + 0.01);
   }
+  AQ.prev = ts;
+}
+
+// One draw of the foam into framebuffer `fb` (null = canvas) at w × h, optionally only rows [y0, y1).
+function sceneDraw(fb, w, h, q, rows){
+  gl.useProgram(prog);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  // Rebind the field every draw: the bake pass uses the same texture unit.
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_3D, fieldTex);
+  gl.viewport(0, 0, w, h);
+  gl.uniform2f(U.res, w, h);
+  gl.uniformMatrix3fv(U.rot, false, new Float32Array(rotMat));
+  gl.uniform1f(U.zoom, camZoom);
+  gl.uniform1f(U.uHalf, DOMAIN_HALF);
+  gl.uniform1f(U.uBakeReady, bakeReady && fieldTex ? 1 : 0);
+  gl.uniform1f(U.uVoxelSize, fieldRes > 0 ? DOMAIN_SIZE / fieldRes : 0.1);
+  gl.uniform1f(U.uTile, state.tile);
+  gl.uniform1f(U.uPeriodic, state.periodic ? 1 : 0);
+  gl.uniform1f(U.uClipAxis, clipState.axis);
+  gl.uniform1f(U.uClipPos, clipState.pos);
+  gl.uniform1f(U.uClipSide, clipState.side);
+  const mc = marchConsts();
+  gl.uniform1f(U.uMarchM, mc.M);
+  gl.uniform1f(U.uInvLip, mc.invLip);
+  gl.uniform1f(U.uThick, state.thickness);
+  gl.uniform1f(U.uPlateauK, state.plateauK);
+  gl.uniform1f(U.uFeat, featureT());
+  gl.uniform1i(U.uSteps, q.steps);
+  gl.uniform1f(U.uThreshK, q.thresh);
+  if(f13View) f13View.apply(gl, prog);
+  if(rows){ gl.enable(gl.SCISSOR_TEST); gl.scissor(0, rows[0], w, rows[1] - rows[0]); }
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  if(rows) gl.disable(gl.SCISSOR_TEST);
+}
+function drawOverlay(){
   const w = canvas.clientWidth, h = canvas.clientHeight;
   const ctx = beginOverlay(w, h);
   drawSeedDots(ctx, w, h);
   drawAxisGizmo(ctx, w, h);
   drawClipHandle(ctx, w, h);
-  drawStiffnessSurface();
-  requestAnimationFrame(frame);
 }
+// interactive=true: Q_INT into the offscreen target at AQ.scale, blitted (LINEAR) to the canvas.
+// interactive=false: a whole Q_REST frame straight into the canvas (fallback when the progressive
+// path is unavailable, and the timing harness).
+function drawMain(interactive){
+  if(resize()) AQ.prev = 0;
+  rotMat = orthonormalize(rotMat);
+  if(prog && U.res){
+    const W = canvas.width, H = canvas.height, low = interactive && ensureLowFB();
+    const w = low ? Math.max(1, Math.min(lowFB.w, Math.round(W * AQ.scale))) : W, h = low ? Math.max(1, Math.min(lowFB.h, Math.round(H * AQ.scale))) : H;
+    sceneDraw(low ? lowFB.fb : null, w, h, interactive ? Q_INT : Q_REST);
+    if(low){
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, lowFB.fb);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+      gl.blitFramebuffer(0, 0, w, h, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+    drawStats[interactive ? 'int' : 'rest']++;
+  }
+  drawOverlay();
+}
+// ── Progressive rest frame ──────────────────────────────────────────────
+// The rest frame is rendered in horizontal strips into a full-resolution offscreen target over
+// several display frames (each strip sized to ~8 ms from the measured per-pixel cost), while the
+// canvas keeps showing the upscaled interactive frame; one blit swaps it in when complete, so it
+// never tears. Any new interaction drops the strips (the next idle starts over).
+const hiFB = {fb: null, rb: null, w: 0, h: 0};
+function ensureHiFB(){
+  const w = canvas.width, h = canvas.height;
+  if(hiFB.fb && hiFB.w === w && hiFB.h === h) return true;
+  if(!hiFB.fb){ hiFB.fb = gl.createFramebuffer(); hiFB.rb = gl.createRenderbuffer(); }
+  gl.bindRenderbuffer(gl.RENDERBUFFER, hiFB.rb);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, w, h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, hiFB.fb);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, hiFB.rb);
+  const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  hiFB.w = w; hiFB.h = h;
+  if(!ok){ gl.deleteFramebuffer(hiFB.fb); gl.deleteRenderbuffer(hiFB.rb); hiFB.fb = null; }
+  return ok;
+}
+const REST = {active: false, y: 0, rows: 0, last: 0, strips: 0, STRIP_MS: 8, REST_COST: 2};   // REST_COST: rest px vs interactive px (shadows, more steps)
+function restBegin(){
+  if(resize()) AQ.prev = 0;
+  if(!prog || !U.res || !ensureHiFB()) return false;
+  const W = canvas.width, H = canvas.height, lo = Math.ceil(H / 16), hi = Math.ceil(H / 4);
+  REST.rows = AQ.pxCost > 0 ? Math.round(REST.STRIP_MS / (AQ.pxCost * REST.REST_COST * W)) : Math.ceil(H / 6);
+  REST.rows = Math.max(lo, Math.min(hi, REST.rows));
+  REST.active = true; REST.y = 0; REST.last = 0; REST.strips = 0;
+  return true;
+}
+// one strip; true when the frame is complete and on the canvas
+function restStep(ts){
+  const W = canvas.width, H = canvas.height;
+  if(W !== hiFB.w || H !== hiFB.h){ REST.active = false; renderDirty = true; return false; }   // pane resized mid-way
+  if(REST.last){ const d = ts - REST.last, lo = Math.ceil(H / 16), hi = Math.ceil(H / 4);   // adapt to the measured strip interval
+    if(d > Math.max(24, AQ.vsync * 1.5)) REST.rows = Math.max(lo, Math.floor(REST.rows * 0.6));
+    else if(d < Math.max(14, AQ.vsync * 1.05)) REST.rows = Math.min(hi, Math.ceil(REST.rows * 1.3)); }
+  REST.last = ts;
+  rotMat = orthonormalize(rotMat);
+  const y1 = Math.min(H, REST.y + REST.rows);
+  sceneDraw(hiFB.fb, W, H, Q_REST, [REST.y, y1]); REST.y = y1; REST.strips++;
+  if(REST.y < H) return false;
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, hiFB.fb);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+  gl.blitFramebuffer(0, 0, W, H, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  REST.active = false; drawStats.rest++; drawStats.restStrips = REST.strips;
+  return true;
+}
+function drawRestProgressiveAll(){ if(!restBegin()) return; let t = 0; while(REST.active) restStep(t += 16); }   // timing harness only
+
+// Stiffness glyph: drawn on change, spun at ≤ 30 fps while on screen, paused while the main view
+// moves, stopped off-screen, still under Reduce Motion.
+let glyphOnScreen = false, glyphDirty = false, glyphLast = 0;
+const GLYPH_SPIN = 0.18;   // rad/s (was 0.003 rad per 60 Hz frame)
+const REDUCE_MOTION = window.matchMedia('(prefers-reduced-motion:reduce)');
+function glyphRedraw(){ glyphDirty = true; wakeLoop(); }
+if(window.IntersectionObserver){
+  new IntersectionObserver(es => { glyphOnScreen = es[es.length - 1].isIntersecting; if(glyphOnScreen) glyphRedraw(); }).observe($('ellcv'));
+}
+
+// On-demand loop: the main view is drawn only when something changed (renderDirty) or auto-rotate
+// is on, at interactive quality while moving, then once at rest quality when the user goes idle.
+// The loop stops when nothing is pending.
+function frame(ts){
+  loopOn = false;
+  if(glLost) return;
+  if(AQ.lastTick){ const d = ts - AQ.lastTick; if(d > 4 && d < AQ.vsync) AQ.vsync = d; } AQ.lastTick = ts;   // display frame interval
+  const dt = lastTs ? Math.min((ts - lastTs) / 1000, 0.05) : 1 / 60; lastTs = ts;
+  if(autoRot){ applyDelta(dt * 50, 0); renderDirty = true; }
+  const now = performance.now();
+  const moving = autoRot || drag || scrub || !!pinch || (now - lastInteract < IDLE_MS) || !!(f13View && f13View.interacting);
+  let drewInt = false;
+  if(renderDirty){                       // any change: show a quick frame now, refine when idle
+    renderDirty = false; REST.active = false;
+    drawingInt = true; drawMain(true); drawingInt = false; refinePending = true; drewInt = true;
+  } else if(refinePending && moving){
+    REST.active = false;                 // interaction resumed: drop the strips
+  } else if(refinePending){
+    if(!REST.active && !restBegin()){ drawMain(false); refinePending = false; }
+    else if(restStep(ts)){ refinePending = false; AQ.cap = Math.min(AQ.max, AQ.cap + 0.05); }   // let the next interaction probe a little higher
+  }
+  if(drewInt) aqSample(ts); else AQ.prev = 0;
+  // stiffness glyph
+  const spin = glyphOnScreen && !!sprog && !moving && !REDUCE_MOTION.matches;
+  if(sprog && glyphOnScreen && glyphDirty){ drawStiffnessSurface(0); glyphDirty = false; glyphLast = spin ? ts : 0; }
+  else if(spin){
+    if(!glyphLast) glyphLast = ts;
+    else if(ts - glyphLast >= 33){ drawStiffnessSurface(Math.min((ts - glyphLast) / 1000, 0.1) * GLYPH_SPIN); glyphLast = ts; }
+  } else glyphLast = 0;
+  if(autoRot || renderDirty || refinePending || moving || spin){ loopOn = true; requestAnimationFrame(frame); }
+}
+
+// ── Context loss: every GL object is gone — rebuild, re-bake, redraw ──────────
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); glLost = true; REST.active = false; setBadge('graphics context lost — restoring …', true); });
+canvas.addEventListener('webglcontextrestored', () => {
+  progCache.clear(); prog = null; progSrc = ''; U = {};
+  Object.keys(fieldTexs).forEach(k => delete fieldTexs[k]);
+  fieldTex = null; fieldRes = 0; bakeReady = false; bakeAvailable = false;
+  seedTex = cellTex = bakeFBO = bakeProg = quadBuf = null;
+  lowFB.fb = lowFB.rb = null; lowFB.w = lowFB.h = 0; hiFB.fb = hiFB.rb = null; hiFB.w = hiFB.h = 0;
+  glLost = false; bakePreview = false;
+  initQuad(); rebuildShader(); initBakePipeline();
+  if(bakeTimer) clearTimeout(bakeTimer);
+  runBake();                              // full bake; requestRender() follows it
+  requestRender();
+});
 
 // ============================================================================
 // STIFFNESS ESTIMATE (v0.5.0) — calibrated against F13LD.lab
@@ -6570,7 +6801,7 @@ function estimateBlock(){
 $('runBtn').addEventListener('click', runEstimate);
 
 // ── Directional stiffness surface (from F13LD.tpms) ──────────────────────────
-let sgl=null,sprog=null,squadBuf=null,suRes,suRot,suZoom;
+let sgl=null,sprog=null,squadBuf=null,suRes,suRot,suZoom,sLastArgs=null;
 let sRotMat=[1,0,0,0,1,0,0,0,1];
 let sInitialized=false,sZoom=3.3;
 const SVERT='#version 300 es\nin vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}';
@@ -6625,6 +6856,7 @@ function initStiffnessGL(){
   sInitialized=true;return true;
 }
 function rebuildStiffnessShader(Ex,Ey,Ez,Gxy,nu,Gxz,Gyz){
+  sLastArgs=[Ex,Ey,Ez,Gxy,nu,Gxz,Gyz];
   if(!sInitialized&&!initStiffnessGL())return;
   const p=sgl.createProgram();
   const vs=mkSShader(sgl.VERTEX_SHADER,SVERT),fs=mkSShader(sgl.FRAGMENT_SHADER,buildStiffFrag(Ex,Ey,Ez,Gxy,nu,Gxz,Gyz));
@@ -6637,17 +6869,29 @@ function rebuildStiffnessShader(Ex,Ey,Ez,Gxy,nu,Gxz,Gyz){
   const loc=sgl.getAttribLocation(sprog,'p');
   sgl.enableVertexAttribArray(loc);sgl.vertexAttribPointer(loc,2,sgl.FLOAT,false,0,0);
   suRes=sgl.getUniformLocation(sprog,'res');suRot=sgl.getUniformLocation(sprog,'rot');suZoom=sgl.getUniformLocation(sprog,'zoom');
+  glyphRedraw();
 }
-function drawStiffnessSurface(){
-  if(!sprog||!suRes||$('homo-results').style.display!=='block')return;
+// dAng: radians to spin since the last draw (0 = redraw as is). The buffer follows the glyph's
+// on-screen size (it was sized while the section was hidden, so it looked soft).
+function drawStiffnessSurface(dAng){
+  if(!sprog||!suRes||sgl.isContextLost()||$('homo-results').style.display!=='block')return;
   const cv=$('ellcv');
-  sRotMat=orthonormalize(mat3Mul(rotAxisAngle(0,1,0,0.003),sRotMat));
+  const px=Math.round(cv.clientWidth*Math.min(window.devicePixelRatio||1,2));
+  if(px>0&&cv.width!==px){cv.width=px;cv.height=px;}
+  sRotMat=orthonormalize(mat3Mul(rotAxisAngle(0,1,0,dAng||0),sRotMat));
   sgl.viewport(0,0,cv.width,cv.height);
   sgl.uniform2f(suRes,cv.width,cv.height);
   sgl.uniformMatrix3fv(suRot,false,new Float32Array(sRotMat));
   sgl.uniform1f(suZoom,sZoom);
   sgl.drawArrays(sgl.TRIANGLE_STRIP,0,4);
+  drawStats.glyph++;
 }
+// Glyph context loss: rebuild its program from the last estimate and redraw.
+$('ellcv').addEventListener('webglcontextlost',e=>{e.preventDefault();sprog=null;});
+$('ellcv').addEventListener('webglcontextrestored',()=>{
+  sInitialized=false;sprog=null;
+  if(sLastArgs)rebuildStiffnessShader(...sLastArgs);
+});
 
 // ── Likely-range rows and units (from F13LD.tpms) ────────────────────────────
 function stiffUnit(vals){
@@ -6696,14 +6940,15 @@ function renderBells(axes,vals,sdLog10,U){
 // ============================================================================
 // INIT — one seed pass, one bake
 // ============================================================================
-f13View = f13ViewInit({ tool: 'foam', host: document.getElementById('cw'), canvas: canvas });
+// redraw: the view menu asks for a frame; moving: interactive frames skip the soft shadows.
+f13View = f13ViewInit({ tool: 'foam', host: document.getElementById('cw'), canvas: canvas, redraw: requestRender, moving: () => drawingInt });
 initQuad();
 syncSeedModeUI();
 regenerateSeeds();
 rebuildShader();
 initBakePipeline();
 runBake();
-requestAnimationFrame(frame);
+requestRender();
 
 // ============================================================================
 // LAYOUT — sections one at a time, phone bottom sheet (F13LD template layout.js, from F13LD.tpms v1.4.0)
@@ -6808,7 +7053,7 @@ F13UI.onSectionChange = id => { if(id === 'seeds') scheduleSk(); };
 const HELP_TARGET = {topology: '#grp-topo', cells: '#grp-cells', cellsize: '#grp-cellsize', thickness: '#grp-thick', plateauk: '#grp-plateauK',
   border: '#grp-border', edge: '#grp-edge', fillet: '#grp-fillet', node: '#grp-node', seeds: '#grp-seedmode', periodic: '#grp-periodic',
   regularity: '#grp-spacing', lloyd: '#grp-lloyd', ratio: '#grp-ratio', disorder: '#grp-jitter', sk: '#sk-wrap', rng: '#grp-rng',
-  aniso: '#grp-aniso', overlay: '#seedsOverlay', clip: '.vw-bl', quality: '#qualityOverlay', estimate: '#grp-run', export: '#exportBtn'};
+  aniso: '#grp-aniso', overlay: '#seedsOverlay', clip: '.vw-bl', estimate: '#grp-run', export: '#exportBtn'};
 F13UI.revealControl = function(sel){
   const el = typeof sel === 'string' ? document.querySelector(sel) : sel;
   if(!el) return false;
@@ -7490,11 +7735,7 @@ html.f13w #grp-run{margin:4px 0 0}
       { id:'clip', label:'clip · X / Y / Z',
         what:'Cuts the view with a plane across the chosen axis; drag the round handle to slide the cut.',
         see:'Exposes the interior foam; the cut face is tinted in the axis colour.',
-        why:'Inspect internal connectivity and wall thickness without exporting.' },
-      { id:'quality', label:'quality · Low / Med / High',
-        what:'Bake resolution and raymarch sampling of the live preview.',
-        see:'Higher = cleaner thin walls and smoother edges, slower updates.',
-        why:'Preview fidelity only — the exported recipe is the same at any setting.' }
+        why:'Inspect internal connectivity and wall thickness without exporting.' }
     ]},
     { title:'Stiffness', items:[
       { id:'estimate', label:'Estimate stiffness · E_s · ν_s', anchor:{into:'#estLabel'},
