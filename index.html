@@ -192,7 +192,7 @@ body .f13h-close{width:44px;height:44px}
   #sectionsRail{display:none}
   #sheetHandle{display:flex;flex:0 0 22px;align-items:center;justify-content:center;position:relative;touch-action:none;cursor:grab;background:none;border:0;width:100%}
   #sheetHandle::before{content:'';width:36px;height:4px;border-radius:2px;background:var(--hair-strong)}
-  #sheetHandle::after{content:'';position:absolute;left:0;right:0;top:-12px;bottom:-10px}
+  #sheetHandle::after{content:'';position:absolute;left:0;right:0;top:-22px;bottom:0}   /* 44 px hit area: the 22 px bar plus 22 px above it (below it the sheet's content would cover any extension) */
   #ctrlScroll{flex:1 1 auto;padding:0 16px}
   .sec{padding:6px 0 20px}
   #sectionsBar{display:block;flex:0 0 auto;border-top:1px solid var(--hair);padding-bottom:env(safe-area-inset-bottom);background:var(--panel)}
@@ -348,6 +348,7 @@ sub,sup{font-size:11px;line-height:0}   /* subscripts stay at the 11 px floor */
         </svg>
       </div>
     </div>
+    <div class="hdr-msg" id="hdrMsg" role="status" aria-live="polite" hidden></div>
   </div>
 
   <div id="main">
@@ -7002,6 +7003,8 @@ requestRender();
   function setActive(id){
     if(!SECS.includes(id)||id===UI.active)return;
     UI.active=id;
+    // open dropdown / Recipe overlays are fixed-position and would outlive the section they were opened from
+    try{window.dispatchEvent(new Event('f13ui-section'));}catch(e){}
     document.querySelectorAll('.sb-fallback [data-section]').forEach(b=>b.classList.toggle('on',b.dataset.section===id));
     if(UI.onSectionChange)try{UI.onSectionChange(id);}catch(e){console.error(e);}
   }
@@ -7113,8 +7116,26 @@ F13UI.helpTargets = {topology: '#grp-topo', cells: '#grp-cells', cellsize: '#grp
 html.f13w{--rail-w:72px}
 html.f13w [data-native]{display:none!important}
 
-/* header: template rules for the Recipe menu (hides Queue / Mesh / Lab / Export, one-row phone header) are
-   left out in foam stage 3. Export / Mesh / Lab / Queue stay as stage 2 until the Recipe menu (stage 5). */
+/* header: the Recipe menu replaces Queue / Mesh / Lab / Export; the queue client's own buttons stay
+   mounted (invisible, no pointer) so its menus and feedback still work when a Recipe item triggers them */
+html.f13w #w-recipe{flex:none}
+html.f13w .fh-right>.f13ldq-split,html.f13w .fh-right>.f13ldq-main{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 8px);pointer-events:none;z-index:-1}
+html.f13w .fh-right>.f13ldq-split>.f13ldq-main,html.f13w .fh-right>.f13ldq-split>.f13ldq-caret,html.f13w .fh-right>.f13ldq-main{opacity:0}
+html.f13w .fh-right>.f13ldq-split>:not(.f13ldq-main):not(.f13ldq-caret){pointer-events:auto}
+html.f13w #f13ldq-fallback{display:none}
+html.f13w .fh-mesh-btn{display:none}
+@media (max-width:560px){
+  html.f13w .f13ld-header{flex-wrap:nowrap;padding:0 10px;padding-top:env(safe-area-inset-top);column-gap:8px}
+  html.f13w .f13ld-header::after{display:none}
+  html.f13w .fh-left{gap:8px;flex:none}
+  html.f13w .fh-right{display:flex;gap:6px}
+}
+@media (max-width:380px){
+  html.f13w .f13ld-header{column-gap:4px;padding-left:8px;padding-right:8px}
+  html.f13w .fh-divider{display:none}
+  html.f13w .fh-left{gap:6px}
+  html.f13w .fh-right{gap:3px}
+}
 
 /* sliders: the widget carries label · value · hint · track; the row keeps only .row-extra.
    Hit geometry: the track's hit box runs 4px below the widget, the value's 4px above it. */
@@ -7248,8 +7269,8 @@ html.f13w #grp-run{margin:4px 0 0}
     //   foam: tapping a pill toggles that axis (native handler), so the radio clicks the pill it needs
     clip:{host:'w-clip',get:()=>clipState.axis,
       set:n=>{const a=n||clipState.axis;if(!a||(n&&n===clipState.axis))return;$('clipPill'+'XYZ'[a-1]).click();}},
-    // Recipe menu: stage 5. Export / Mesh / Lab / Queue stay native until then.
-    recipe:null,
+    // Recipe menu (header): Open recipe…, Export JSON, Queue, Choose queue…, Mesh, Lab
+    recipe:{host:'w-recipe',exportBtn:'exportBtn',mesh:()=>openInMesh(),lab:()=>openInLab()},
     // help "show" buttons: the app's own HELP_TARGET block adds them (it also serves the no-WebGL page)
     helpTargets:{}
   };
@@ -7961,9 +7982,25 @@ html.f13w #grp-run{margin:4px 0 0}
       var r=document.querySelector(RIGHT), a=document.querySelector(ANCHOR); if(!r) return;
       var b=document.createElement('button'); b.type='button'; b.id='f13ldq-fallback';
       b.className='fh-mesh-btn'; b.textContent=LABEL; b.title=TIP;
-      b.addEventListener('click', function(){ alert('Add to queue is offline — couldn\u2019t reach the queue service. Reload the page to try again.'); });
+      b.addEventListener('click', function(){ showHdrMsg('Add to queue is offline — couldn\u2019t reach the queue service. Reload the page to try again.'); });
       if(a) r.insertBefore(b,a); else r.appendChild(b);
     }
+    // Inline message under the header (replaces alert()), shared with the Recipe menu and recipe import.
+    // o (optional): {action:{label, run}} adds a button after the text; {note} a dim second line; {ms} the time shown.
+    var msgT=null;
+    function showHdrMsg(t,o){
+      var m=document.getElementById('hdrMsg'); if(!m) return;
+      o=o||{}; m.textContent=t; m.hidden=false; clearTimeout(msgT);
+      if(o.action){
+        var b=document.createElement('button'); b.type='button'; b.className='hdr-msg-act'; b.textContent=o.action.label;
+        b.addEventListener('click', function(e){ e.stopPropagation(); m.hidden=true; o.action.run(); });
+        m.appendChild(document.createTextNode(' · ')); m.appendChild(b);
+      }
+      if(o.note){ var n=document.createElement('div'); n.className='hdr-msg-note'; n.textContent=o.note; m.appendChild(n); }
+      msgT=setTimeout(function(){ m.hidden=true; }, o.ms||(o.action?8000:5000));
+    }
+    window.F13UI=window.F13UI||{}; window.F13UI.message=showHdrMsg;
+    document.addEventListener('click', function(e){ var m=document.getElementById('hdrMsg'); if(m&&!m.hidden&&!e.target.closest('#f13ldq-fallback,#hdrMsg')) m.hidden=true; });
     function load(retry){
       var sc=document.createElement('script');
       sc.src='https://mshomper.github.io/f13ld.queue/f13ld-queue.js';
@@ -7974,5 +8011,262 @@ html.f13w #grp-run{margin:4px 0 0}
     load(true);
   })();
   </script>
+<style id="f13-recipe-style">
+/* F13LD UI template · recipe-import.css (drop overlay + header message extras); icon tint follows foam's sand accent */
+.f13r-drop{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;pointer-events:none;opacity:0;visibility:hidden;
+  background:oklch(0.10 0.01 265 / 0.6);transition:opacity 160ms ease-out,visibility 0s linear 160ms}
+.f13r-drop.on{opacity:1;visibility:visible;transition:opacity 160ms ease-out}
+.f13r-drop::before{content:'';position:absolute;inset:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom));border-radius:24px;
+  box-shadow:inset 0 0 0 2px var(--accent),inset 0 0 40px var(--accent-soft),0 0 0 6px var(--accent-soft)}
+.f13r-card{position:relative;display:flex;align-items:center;gap:14px;padding:14px 22px 14px 14px;border-radius:24px;background:var(--card);
+  box-shadow:inset 0 1px 0 oklch(1 0 0 / 0.06),0 2px 0 oklch(0 0 0 / 0.35),0 18px 40px oklch(0 0 0 / 0.45);
+  transform:translateY(8px) scale(.96);transition:transform 220ms cubic-bezier(.3,1.4,.5,1)}
+.f13r-drop.on .f13r-card{transform:none}
+.f13r-drop-ic{flex:none;display:grid;place-items:center;width:48px;height:48px;border-radius:50%;color:var(--accent-ink);
+  background:radial-gradient(circle at 34% 28%,oklch(0.98 0.04 89) 0,var(--accent) 46%,oklch(0.74 0.09 86) 100%);
+  box-shadow:0 0 22px var(--accent-line),inset 0 -3px 6px oklch(0.5 0.07 86 / 0.35)}
+.f13r-drop-ic svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
+.f13r-card b{display:block;font:650 15px/20px var(--lq-font);color:var(--ink)}
+.f13r-card small{display:block;font:400 13px/18px var(--lq-font);color:var(--ink-dim)}
+@media (prefers-reduced-motion:reduce){.f13r-card{transform:none;transition:none}}
+.hdr-msg-act{position:relative;margin:0;padding:0;border:0;background:none;color:var(--accent);font:600 13px/1.45 var(--lq-font);cursor:pointer}
+.hdr-msg-act::after{content:'';position:absolute;left:50%;top:50%;width:max(100%,44px);height:44px;transform:translate(-50%,-50%)}
+.hdr-msg-act:hover{text-decoration:underline;text-underline-offset:3px}
+.hdr-msg-note{margin-top:4px;color:var(--ink-dim);font-size:13px}
+</style>
+<script id="f13-recipe-import">
+/* ============================================================================
+   F13LD UI template · recipe-import.js — round-trip import of exported recipe JSON (design tools).
+   Extracted from F13LD.tpms v1.4.0 #f13-recipe-import. The GENERIC half is identical across tools;
+   only the PER-TOOL block changes. Entry points: Recipe → Open recipe…, drag-and-drop a .json
+   anywhere, paste recipe JSON outside text fields. Undo via the header message.
+   Needs: buildExportJSON(), F13UI.message(text,{note,action}) (shared header), recipe-import.css.
+   ========================================================================== */
+(function(){
+  'use strict';
+  const $=id=>document.getElementById(id);
+  const fire=(el,type)=>el.dispatchEvent(new Event(type,{bubbles:true}));
+
+  /* ============ PER-TOOL (foam) ======================================== */
+  // plan(r, warn): validate + normalise the recipe into a plan object. Never touches the app.
+  //   Key absent → the app default (old recipes); key null → "not applicable in this mode": left as it is.
+  //   Seeds load verbatim (applySeeds), never regenerated, unless the recipe carries no positions.
+  //   Homogenization / estimate results are not restored (the user re-runs).
+  // apply(plan, warn): the app's own handlers and native inputs, in dependency order, with the re-bake /
+  //   regenerate / rebuild functions stubbed during the batch; one rebuildShader and one full bake at the end.
+  const isNum=v=>typeof v==='number'&&isFinite(v);
+  const verNum=v=>String(v||'').split('.').map(x=>parseInt(x,10)||0);
+  const newer=(a,b)=>{const x=verNum(a),y=verNum(b);for(let i=0;i<3;i++){if((x[i]||0)!==(y[i]||0))return (x[i]||0)>(y[i]||0);}return false;};
+  const lim=id=>{const e=$(id);return [+e.min,+e.max];};
+  const STATE_KEY={regularity:'regularity',lloyd:'lloydIter',ratio:'sizeRatio',large:'largeFraction',jitter:'jitter',rng:'rngSeed',
+    plateauK:'plateauK',border:'border',edge:'edgeMin',fillet:'fillet',node:'node'};
+  // the Undo snapshot also carries values the export leaves out in the current mode (null in the JSON)
+  const exportWithHidden=()=>{const r=buildExportJSON();r.__state={};
+    Object.keys(STATE_KEY).forEach(k=>{r.__state[k]=state[STATE_KEY[k]];});return r;};
+
+  function plan(r,warn){
+    const S=r.seeds&&typeof r.seeds==='object'&&!Array.isArray(r.seeds)?r.seeds:{};
+    const G=r.geometry&&typeof r.geometry==='object'&&!Array.isArray(r.geometry)?r.geometry:{};
+    const D=r.domain&&typeof r.domain==='object'?r.domain:{};
+    const A=r.anisotropy&&typeof r.anisotropy==='object'?r.anisotropy:{};
+    const hid=r.__state&&typeof r.__state==='object'?r.__state:{};
+    if(!r.seeds&&!r.geometry)throw new Error('This recipe has no seeds or geometry.');
+    if(newer(r.meta.version,APP_VERSION))warn('Made by a newer F13LD.foam ('+r.meta.version+'); parts it does not know were skipped.');
+    const P={};
+    // enums: unknown → keep what is set now
+    const MODES=[...document.querySelectorAll('#seedMode option')].map(o=>o.value),TOPOS=['open','closed','plateau','wet'];
+    P.mode=S.mode==null?'poisson':S.mode;
+    if(MODES.indexOf(P.mode)<0){warn('Seed mode "'+P.mode+'" is not known here; kept '+state.seedMode+'.');P.mode=state.seedMode;}
+    P.topo=G.mode==null?'plateau':G.mode;
+    if(TOPOS.indexOf(P.topo)<0){warn('Topology "'+P.topo+'" is not known here; kept '+state.topology+'.');P.topo=state.topology;}
+    P.periodic=D.periodic===undefined?false:!!D.periodic;
+    // a clamped number, or undefined (= leave the control alone)
+    const num=(name,v,lo,hi)=>{
+      if(!isNum(v)){warn(name+' is not a number; left as it was.');return undefined;}
+      if(v<lo||v>hi){const c=Math.min(hi,Math.max(lo,v));warn(name+' '+v+' → '+c+' (limit '+lo+' to '+hi+')');return c;}
+      return v;};
+    const opt=(k,name,v,def,lo,hi)=>{
+      if(v===null)return isNum(hid[k])?hid[k]:undefined;
+      return num(name,v===undefined?def:v,lo,hi);};
+    // seeds
+    let pos=S.positions;
+    if(pos!==undefined&&!(Array.isArray(pos)&&pos.length>=3&&pos.length%3===0&&pos.every(isNum))){
+      warn('The seed positions are not usable; seeds were regenerated from the settings.');pos=undefined;
+    }else if(pos===undefined)warn('This recipe has no seed positions; seeds were regenerated from the settings and may differ.');
+    let N=0;
+    if(pos){
+      N=pos.length/3;
+      if(N>MAX_BAKE_SEEDS)throw new Error('This recipe has '+N+' seeds; foam bakes at most '+MAX_BAKE_SEEDS+'.');
+      let out=false;P.seeds=[];
+      for(let i=0;i<N;i++){const p=[pos[3*i],pos[3*i+1],pos[3*i+2]].map(c=>{if(c<DOMAIN_MIN||c>DOMAIN_MAX){out=true;return Math.min(DOMAIN_MAX,Math.max(DOMAIN_MIN,c));}return c;});P.seeds.push(p);}
+      if(out)warn('Some seed positions were outside the cube and were clamped.');
+      const w=S.weights;
+      if(Array.isArray(w)&&w.length===N&&w.every(isNum))P.weights=w.slice();
+      else{P.weights=null;if(w!==undefined&&w!==null)warn('The power-cell weights did not match the seeds and were dropped.');}
+      P.minSpacing=isNum(S.min_spacing)&&S.min_spacing>0?S.min_spacing:0;
+    }
+    const cmin={kelvin:2,fcc:4,weairePhelan:8,c15:24}[P.mode]||8;
+    P.count=num('cells',S.count===undefined||S.count===null?(N||200):S.count,cmin,COUNT_MAX);
+    if(P.count===undefined)P.count=N||200;
+    P.regularity=opt('regularity','regularity',S.regularity,0.9,...lim('sSpacing'));
+    P.lloyd=opt('lloyd','Lloyd iterations',S.lloyd_iterations,4,0,P.mode==='lloyd'?60:12);
+    if(P.lloyd!==undefined)P.lloyd=Math.round(P.lloyd);
+    P.ratio=opt('ratio','size ratio',S.size_ratio,2,...lim('sRatio'));
+    P.large=opt('large','large share',S.large_fraction,0.3,...lim('sLarge'));
+    P.jitter=opt('jitter','disorder',S.jitter,0,...lim('sJitter'));
+    P.rng=opt('rng','RNG seed',S.rng_seed,42,0,2147483647);
+    if(P.rng!==undefined)P.rng=Math.round(P.rng);
+    // structure
+    P.thick=num('thickness',G.thickness===undefined?0.08:G.thickness,...lim('sThick'));
+    P.plateauK=opt('plateauK','plateau k',G.plateau_k,0.05,...lim('sPlateauK'));
+    P.border=opt('border','border',G.border,0.4,...lim('sBorder'));
+    P.edge=opt('edge','edge',G.edge_min,P.topo==='wet'?0:0.03,...lim('sEdge'));
+    if(P.topo==='wet'){P.fillet=undefined;P.node=undefined;}   // not used in wet (the export writes 0)
+    else{P.fillet=opt('fillet','fillet',G.fillet,0,...lim('sFillet'));P.node=opt('node','node',G.node,0,...lim('sNode'));}
+    if(isNum(G.organic)&&G.organic>0)warn('The organic blend no longer exists; it was ignored (use fillet and node).');
+    if(G.field!==2)warn('Rebuilt with the exact field; the solid fraction changes.');
+    if(G.normalize===false)warn('Gradient normalisation is always on now.');
+    // stretch
+    P.aniso=A.enabled===true;
+    const st=Array.isArray(A.stretch)&&A.stretch.length>=3?A.stretch:[1,1,1];
+    P.stretch=['sAnisoX','sAnisoY','sAnisoZ'].map((id,i)=>num('stretch '+'XYZ'[i],st[i],...lim(id)));
+    // cell size: the cube edge in mm → mm per cell (stored per browser, so a setting rather than part of the design)
+    P.tileMM=isNum(G.tile_mm)&&G.tile_mm>0?G.tile_mm:undefined;
+    return P;
+  }
+
+  function apply(P,warn){
+    const names=['scheduleRegen','scheduleBake','rebuildShader','onDesignChange','bakeDragTick','bakeDragEnd'],real={};
+    names.forEach(n=>{real[n]=window[n];window[n]=function(){};});
+    const setR=(id,v)=>{if(v===undefined)return;const el=$(id);el.value=v;fire(el,'input');};
+    try{
+      // work scheduled before the import must not overwrite it
+      if(regenTimer){clearTimeout(regenTimer);regenTimer=null;}
+      _seedReq++;_seedPending=false;
+      // 1 bake resolution: fixed (domain.bake_res is a view setting); 2 seed mode (may switch periodic on)
+      if(state.seedMode!==P.mode){const s=$('seedMode');s.value=P.mode;fire(s,'change');}
+      // 3 periodic
+      if(state.periodic!==P.periodic)setPeriodic(P.periodic);
+      // 4 count (the log slider cannot hit every count)
+      state.count=P.count;syncCountSlider();
+      // 5 regularity, Lloyd, size ratio, large share, disorder, RNG seed
+      setR('sSpacing',P.regularity);setR('sLloyd',P.lloyd);setR('sRatio',P.ratio);setR('sLarge',P.large);setR('sJitter',P.jitter);setR('rngSeed',P.rng);
+      // 6 topology
+      if(state.topology!==P.topo)document.querySelector('.mode-btn[data-topo="'+P.topo+'"]').click();
+      // 7 thickness, plateau k, border, edge, fillet, node
+      setR('sThick',P.thick);setR('sPlateauK',P.plateauK);setR('sBorder',P.border);setR('sEdge',P.edge);setR('sFillet',P.fillet);setR('sNode',P.node);
+      // 8 anisotropy and stretch
+      if(state.aniso!==P.aniso)$('anisoToggle').click();
+      ['sAnisoX','sAnisoY','sAnisoZ'].forEach((id,i)=>setR(id,P.stretch[i]));
+      // 10 seeds, verbatim; 9 cell size (needs the seed count)
+      if(P.seeds)applySeeds({seeds:P.seeds,weights:P.weights,minSpacing:P.minSpacing});
+      if(P.tileMM!==undefined){
+        const ms=meanSpacing(P.seeds?P.seeds.length:P.count),cur=state.cellSizeMM;
+        // tile_mm is the cube edge rounded to 4 decimals: keep the typed cell size when it already gives that edge
+        if(!(cur>0&&parseFloat((10*cur/ms).toFixed(4))===P.tileMM)){
+          const el=$('cellSizeMM');el.value=parseFloat((P.tileMM/10*ms).toFixed(6));fire(el,'input');}
+      }
+    }finally{names.forEach(n=>{window[n]=real[n];});}
+    // bindRange(…, scheduleRegen) holds the function itself, so the stub above cannot catch those four sliders:
+    // drop whatever they scheduled (the imported seeds stay)
+    if(P.seeds){if(regenTimer){clearTimeout(regenTimer);regenTimer=null;}_seedReq++;_seedPending=false;}
+    syncSeedModeUI();syncTopologyUI();
+    bakePreview=false;clearTimeout(bakeRelease);bakeRelease=null;   // an import never previews
+    rebuildShader();                                                // compiles only if the generated source changed
+    updateMMHints();updateEq();
+    onDesignChange();                                               // resets the export button, clears a stale estimate
+    if(P.seeds)scheduleBake();else scheduleRegen();                 // one full bake (regen bakes when the seeds land)
+  }
+  const TOOL={
+    id:'f13ld.foam',                 // the existing meta.tool value: never renamed (Lab and Mesh route on it)
+    name:'F13LD.foam',major:99,      // versions are compared against APP_VERSION in plan(); 0.x here
+    exportRecipe:exportWithHidden,
+    looksLike:r=>r.family==='foam'||(!!r.seeds&&Array.isArray(r.seeds.positions)&&!!r.geometry&&!!r.geometry.mode),
+    plan,apply,
+    label:()=>SEED_MODE_LABELS[state.seedMode]+' · '+state.topology
+  };
+  /* ============ END PER-TOOL =========================================== */
+
+  /* ============ GENERIC (identical across F13LD tools) ================== */
+  // legacy meta.tool values still in use (never rename them: Lab and Mesh route on them)
+  const LEGACY={'noise-scaffold-explorer':'F13LD.noise',grain:'F13LD.grain',beam:'F13LD.beam','beam-builder':'F13LD.beam','bundle-builder':'F13LD.bundle'};
+  const toolName=t=>LEGACY[String(t).toLowerCase()]||String(t).replace(/^f13ld\./i,'F13LD.');
+  const say=(t,o)=>setTimeout(()=>{if(window.F13UI&&F13UI.message)F13UI.message(t,o);},0);
+  // TOOL.id is one meta.tool value or a list of them (first = canonical). tagOf(r) → the listed value this
+  // recipe carries (lower-case, as listed), or null (no tag, or a foreign one).
+  const tagOf=r=>{const t=r&&r.meta&&r.meta.tool;if(typeof t!=='string'||!t)return null;
+    const k=t.toLowerCase();return [].concat(TOOL.id).map(x=>String(x).toLowerCase()).indexOf(k)<0?null:k;};
+  function check(r){
+    if(!r||typeof r!=='object'||Array.isArray(r))return 'Not a recipe.';
+    if(!r.meta||typeof r.meta!=='object')return 'Not a recipe: it has no meta block.';
+    const tool=r.meta.tool;
+    if(typeof tool==='string'&&tool&&tagOf(r)===null)return 'This recipe is from '+toolName(tool)+'. Open it there.';
+    if(!tool&&!TOOL.looksLike(r))return 'Not an '+TOOL.name+' recipe.';
+    return '';
+  }
+  // → {ok, warnings, error?, label?, before?}. Unknown keys are ignored; nothing changes unless ok.
+  function applyRecipe(r){
+    const warnings=[],warn=m=>{if(warnings.indexOf(m)<0)warnings.push(m);};
+    const err=check(r);if(err)return {ok:false,error:err,warnings};
+    const v=String(r.meta.version||'1.0');
+    if(parseInt(v,10)>TOOL.major)warn('Made by a newer '+TOOL.name+' ('+v+'); parts it does not know were skipped.');
+    const tag=tagOf(r);   // which listed meta.tool matched (null for untagged recipes); passed to plan and apply
+    let P;try{P=TOOL.plan(r,warn,tag);}catch(e){return {ok:false,error:e.message,warnings};}
+    const before=TOOL.exportRecipe(),btag=tagOf(before);
+    try{TOOL.apply(P,warn,tag);}
+    catch(e){console.error(e);try{TOOL.apply(TOOL.plan(before,()=>{},btag),()=>{},btag);}catch(_){}
+      return {ok:false,error:'Could not apply this recipe ('+e.message+').',warnings};}
+    return {ok:true,warnings,label:TOOL.label(),before};
+  }
+  function importRecipe(r){
+    const res=applyRecipe(r);
+    if(!res.ok){say(res.error);return res;}
+    const w=res.warnings,note=w.length?w.slice(0,3).join(' · ')+(w.length>3?' · +'+(w.length-3)+' more':''):'';
+    say('Imported '+res.label,{note,action:{label:'Undo',run:()=>{
+      const u=applyRecipe(res.before);say(u.ok?'Back to '+u.label+'.':u.error);}}});
+    return res;
+  }
+  // source: 'file' | 'drop' | 'paste'. Pasted text that is not a recipe is ignored quietly.
+  function importText(text,source){
+    let r;
+    try{r=JSON.parse(text);}catch(e){if(source!=='paste')say('That file is not valid JSON.');return null;}
+    if(source==='paste'&&(!r||typeof r!=='object'||!r.meta||typeof r.meta!=='object'))return null;
+    return importRecipe(r);
+  }
+  function readFile(f){
+    if(!/\.json$/i.test(f.name)&&!/json/i.test(f.type)){say('Not a recipe file. Use a .json exported from '+TOOL.name+'.');return Promise.resolve(null);}
+    if(f.size>5e6){say('That file is too large to be a recipe.');return Promise.resolve(null);}
+    return f.text().then(t=>importText(t,'file'),()=>{say('Could not read that file.');return null;});
+  }
+  // Open recipe…
+  const fi=document.createElement('input');fi.type='file';fi.accept='.json,application/json';fi.hidden=true;fi.id='f13r-file';
+  document.body.appendChild(fi);
+  fi.addEventListener('change',()=>{const f=fi.files&&fi.files[0];fi.value='';if(f)readFile(f);});
+  // drop anywhere: overlay while a file is dragged over the window
+  const ov=document.createElement('div');ov.className='f13r-drop';ov.setAttribute('aria-hidden','true');
+  ov.innerHTML='<div class="f13r-card"><span class="f13r-drop-ic"><svg viewBox="0 0 24 24"><path d="M12 15.5V4.6M7.2 9.2 12 4.4l4.8 4.8"/><path d="M5 19.5h14"/></svg></span>'+
+    '<span><b>Drop to open recipe</b><small>'+TOOL.name+' .json</small></span></div>';
+  document.body.appendChild(ov);
+  const hasFiles=e=>!!(e.dataTransfer&&[...e.dataTransfer.types].indexOf('Files')>=0);
+  let hideT=0;
+  const overlay=on=>{clearTimeout(hideT);ov.classList.toggle('on',on);};
+  window.addEventListener('dragenter',e=>{if(hasFiles(e)){e.preventDefault();overlay(true);}});
+  window.addEventListener('dragover',e=>{if(!hasFiles(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';
+    overlay(true);hideT=setTimeout(()=>overlay(false),400);});   // dragover repeats while inside; silence = gone
+  window.addEventListener('dragleave',e=>{if(!e.relatedTarget)overlay(false);});
+  window.addEventListener('drop',e=>{if(!hasFiles(e))return;e.preventDefault();overlay(false);
+    const fs=[...e.dataTransfer.files],f=fs.find(x=>/\.json$/i.test(x.name))||fs[0];if(f)readFile(f);});
+  // paste (Ctrl/Cmd+V) outside text fields
+  const typing=t=>!!t&&(t.isContentEditable||/^(TEXTAREA|SELECT)$/.test(t.tagName)||
+    (t.tagName==='INPUT'&&!/^(checkbox|radio|range|button|submit|reset|file|color)$/i.test(t.type)));
+  document.addEventListener('paste',e=>{
+    if(typing(e.target)||typing(document.activeElement))return;
+    const s=((e.clipboardData&&e.clipboardData.getData('text/plain'))||'').trim();
+    if(s[0]!=='{'||s.length>5e6)return;
+    if(importText(s,'paste'))e.preventDefault();
+  });
+  window.F13Recipe={apply:applyRecipe,importRecipe,importText,readFile,open:()=>fi.click(),TOOL,tagOf};
+})();
+</script>
 </body>
 </html>
