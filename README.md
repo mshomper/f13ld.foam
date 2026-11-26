@@ -4,6 +4,18 @@ Lightweight, browser-native tool for building periodic Voronoi and Laguerre foam
 
 Live: https://mshomper.github.io/f13ld.foam
 
+## Using it
+
+Open `index.html` in a browser with WebGL2 (Chrome, Edge, Firefox, Safari 15+). One file, no build step.
+
+The controls sit in four sections, one at a time: **Seeds**, **Structure**, **Stretch** and **Analyze**. On desktop a rail beside the panel switches them; on a phone the panel is a bottom sheet with a tab bar. Every (i) opens its help card, and the card's **show** button jumps to the control (or says where it is when the row is hidden in the current mode).
+
+1. **Seeds**: mode, periodic, cell count, cell size, seed settings, S(k) plot
+2. **Structure**: topology, thickness, plateau k, fillet, node, border, edge
+3. **Stretch**: anisotropy per axis
+4. **Analyze**: E_s, ν, stiffness estimate (clip plane and 3×3×3 tile check are in the view)
+5. Hand the recipe on from the **Recipe** menu in the header
+
 ## What it does
 
 - **Seeds** in the cube `[-5, 5]³`, 8–500 cells on a log-scaled slider (fine steps at low counts). Periodic mode makes opposite faces match so the cube tiles.
@@ -16,12 +28,14 @@ Live: https://mshomper.github.io/f13ld.foam
 - **Fillet and node** (v0.6.0, replacing organic): a circular blend radius where neighbouring struts (or walls) meet, and an optional sphere at every node, blended the same way. Mid-span thickness is unchanged.
 - **Exact field** (v0.6.0): the field is the true distance to the nearest cell wall (closed) or cell edge (open, plateau), from the bisector planes of the 8 nearest seeds, searched over the seeds' periodic copies. Walls are 2t thick and struts 2t across everywhere — near nodes, with stretch on, and in tiles of only a few cells. It replaces v0.5.0's gradient normalization (and its toggle), whose struts ran up to a third thicker near nodes.
 - **Anisotropy**: stretches the distance metric per axis for elongated, load-aligned cells.
-- **Preview**: GPU bake of the exact wall and edge distances per voxel (same construction as the export field, matched to half-float rounding), raymarched with guaranteed-safe step lengths; clip plane, 3×3×3 tile check, mm read-outs. Thickness and plateau k stay live; seed, stretch, fillet, node, border and edge changes re-bake. The two-size mix and symmetric seeds are generated in a worker, and the bake waits for them.
+- **Preview**: GPU bake of the exact wall and edge distances per voxel (same construction as the export field, matched to half-float rounding), raymarched with guaranteed-safe step lengths; clip plane, 3×3×3 tile check, mm read-outs. Thickness, plateau k and border are uniforms: they never re-bake or recompile. Seed, stretch, fillet, node, edge and topology changes re-bake. The two-size mix and symmetric seeds are generated in a worker, and the bake waits for them.
+- **Rendering** (v0.9.0): quality is automatic (the Low / Med / High control is gone). The bake is a fixed 192³. While a re-baking slider moves, a 96³ preview bake shows the change; the full bake follows on release. While anything moves the view renders at an adaptive reduced scale and is upscaled; shortly after it stops, one full-resolution frame is drawn in strips and swapped in. Nothing draws while the view is idle. A lost WebGL context is rebuilt without a reload.
+- **Controls** (v0.9.0): the panel uses the [liquid-ui](https://github.com/mshomper/liquid-ui) widgets (sliders, dropdown, segmented and radio controls, toggles, Recipe menu), drawn in WebGL over the native inputs, which stay the source of state. Without WebGL the native controls are shown.
 - **Solid fraction** (v0.4.0): live read-out under the equation, sampled at 48³ from the exact field F13LD.mesh exports and F13LD.lab homogenizes (shown with ≈ for bounded foams, whose faces don't wrap).
 
 ## Stiffness estimate (v0.5.0)
 
-**Estimate stiffness** measures the solid fraction of the exact foam (the field F13LD.mesh exports, point-sampled at 64³ in worker threads) and estimates Ex, Ey, Ez, the three shear moduli and Poisson's ratio from laws fitted to 67 F13LD.lab FFT homogenizations of this same geometry (F13LD.lab `docs/FOAM_CALIBRATION.md`):
+**Estimate stiffness** (Analyze) measures the solid fraction of the exact foam (the field F13LD.mesh exports, point-sampled at 64³ in worker threads) and estimates Ex, Ey, Ez, the three shear moduli and Poisson's ratio from laws fitted to 67 F13LD.lab FFT homogenizations of this same geometry (F13LD.lab `docs/FOAM_CALIBRATION.md`):
 
 - open and plateau: E/E_s = 0.724 ρ^1.93 · closed: E/E_s = 0.304 ρ + 0.456 ρ²
 - × 0.956 / 0.985 for Poisson-disk seeds (open / closed) · × 1 + 0.118 (1 − e^(−k/0.111)) for plateau borders that add mass
@@ -32,19 +46,33 @@ Live: https://mshomper.github.io/f13ld.foam
 
 **Calibration status (2026-10-04): provisional.** 27 of the 67 lab runs behind these laws stopped at the lab's old 300-iteration cap (open and plateau foams at 18–35 %, closed at 12–18 % on the coarse grid), and a stopped solve reads stiff, so the open law may read high above ~18 % solid. Next: re-run the whole calibration on the exact field at the 1000-iteration cap, plus the plateau and cell-count passes, then refit (F13LD.lab `docs/FOAM_CALIBRATION.md` §11). The constants will move in v0.6.1. Plan: [`docs/NEXT_STEPS.md`](docs/NEXT_STEPS.md).
 
-Each value comes with a likely range (fit scatter, seed-to-seed scatter at this cell count, and an open cell-count question still being measured). Ordered lattices (Kelvin, Weaire–Phelan, FCC, C15), uniform-random seeds, the v0.6.0 foams (wet, fillet / node, two-size mix, symmetric seeds) and densities outside 5–35 % (open) / 12–35 % (closed) get an estimate marked **not calibrated**. The result rides in the exported recipe as a `homogenization` block (F13LD.tpms field names), so F13LD.mesh shows it. For a measured answer, use **Open in F13LD.lab**.
+Each value comes with a likely range (fit scatter, seed-to-seed scatter at this cell count, and an open cell-count question still being measured). Ordered lattices (Kelvin, Weaire–Phelan, FCC, C15), uniform-random seeds, the v0.6.0 foams (wet, fillet / node, two-size mix, symmetric seeds) and densities outside 5–35 % (open) / 12–35 % (closed) get an estimate marked **not calibrated**. The result rides in the exported recipe as a `homogenization` block (F13LD.tpms field names), so F13LD.mesh shows it. It is cleared when the design changes, and on import, so an export carries results only for the current design. For a measured answer, use **Open in F13LD.lab**.
 
 ## Handoff
 
-- **Open in F13LD.mesh** and **Open in F13LD.lab** (v0.4.0, stiffness by FFT homogenization) send the recipe after `#r=` in the link. Recipes carry every seed position (up to ~28 KB), and the part after `#` never leaves the browser, so length doesn't matter.
+The header **Recipe** menu holds: **Open recipe…**, **Export JSON**, **Queue**, **Choose queue…**, **Mesh** and **Lab**.
+
+- **Mesh** and **Lab** (stiffness by FFT homogenization) send the recipe after `#r=` in the link. Recipes carry every seed position (up to ~28 KB), and the part after `#` never leaves the browser, so length doesn't matter.
 - Only **periodic** foams can be handed to mesh or the lab, or added to the queue; otherwise the tool explains why and offers to turn periodic on.
 - **Export JSON** saves the same recipe as a file.
 
-### Recipe
+### Importing a recipe
+
+**Open recipe…**, dropping a `.json` file on the page, or pasting recipe JSON loads a foam recipe back into the tool. The header then says what was imported, with **Undo**, which restores the previous design.
+
+- Seeds load exactly as saved (positions and weights), not regenerated.
+- Stiffness results are not restored; run the estimate again.
+- A recipe from another F13LD tool is refused with that tool's name.
+- Values outside a control's range are clamped, with a warning. Unknown keys are ignored.
+- Recipes with `bake_res` 128 or 160 import silently (the bake is a fixed 192³ now).
+- Recipes from a newer F13LD.foam import with a warning.
+- Cell size is set from `tile_mm`.
+
+### Recipe format
 
 ```
 { "family": "foam",
-  "meta":     { "tool": "f13ld.foam", "version": "0.6.0", … },
+  "meta":     { "tool": "f13ld.foam", "version": "0.9.0", … },    // the app version
   "domain":   { "world": [-5, 5], "periodic": true, … },
   "seeds":    { "mode", "count", "regularity", "lloyd_iterations", "rng_seed",
                 "size_ratio", "large_fraction", "jitter",
@@ -56,7 +84,7 @@ Each value comes with a likely range (fit scatter, seed-to-seed scatter at this 
                 "field": 2, "tile_mm" } }
 ```
 
-`tile_mm` is the cube edge at the cell size set in the tool; mesh uses it as the default cell size. `field: 2` selects the exact field (v0.6.0+); recipes without it build with the original field in mesh and the lab. `weights` are power-cell weights (seed i owns the points where |p − sᵢ|² − wᵢ is smallest). `border` is the wet-foam border radius and `edge_min` its minimum edge width (v0.7.0; absent or 0 = sharp cusps, as before); `fillet` and `node` apply to the other topologies.
+`domain.bake_res` is always 192 (the preview's bake size; it does not change the geometry). `tile_mm` is the cube edge at the cell size set in the tool (the cell size input sets it); mesh uses it as the default cell size. `field: 2` selects the exact field (v0.6.0+); recipes without it build with the original field in mesh and the lab. `weights` are power-cell weights (seed i owns the points where |p − sᵢ|² − wᵢ is smallest). `border` is the wet-foam border radius and `edge_min` its minimum edge width (v0.7.0; absent or 0 = sharp cusps, as before); `fillet` and `node` apply to the other topologies.
 
 ## Shared code
 

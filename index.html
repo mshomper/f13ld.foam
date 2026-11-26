@@ -341,7 +341,7 @@ sub,sup{font-size:11px;line-height:0}   /* subscripts stay at the 11 px floor */
       <div id="w-recipe"></div>
       <button class="fh-mesh-btn" onclick="openInMesh()" title="Open in F13LD.mesh — build a watertight, printable 3MF" aria-label="Open in F13LD.mesh"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6l5.5 3.2v6.4L8 14.4 2.5 11.2V4.8z"/><path d="M8 8v6.4M8 8L2.5 4.8M8 8l5.5-3.2"/></svg><span>Mesh</span></button>
       <button class="fh-mesh-btn" onclick="openInLab()" title="Open in F13LD.lab — homogenize in the validated FFT solver" aria-label="Open in F13LD.lab"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 1.8h3.6M6.7 1.8v4.4L2.9 12.6a1.2 1.2 0 0 0 1 1.8h8.2a1.2 1.2 0 0 0 1-1.8L9.3 6.2V1.8"/><path d="M4.6 10h6.8"/></svg><span>Lab</span></button>
-      <span class="fh-version">v0.8.1</span>
+      <span class="fh-version">v0.9.0</span>
       <div class="fh-icon">
         <svg width="18" height="18" viewBox="0 0 40 40" fill="none" stroke="#5C4624" stroke-width="1.9" stroke-linejoin="round">
           <path d="M5 8 L17 4 L24 12 L18 21 L7 19 Z"/>
@@ -3760,14 +3760,14 @@ float floodSDF(vec2 p){
 </script>
 <script>
 // ============================================================================
-// F13LD.foam v0.8.1 — discrete cellular scaffolds
+// F13LD.foam v0.9.0 — discrete cellular scaffolds
 // Seeds (CPU) → GPU bake of the exact wall / edge distances per voxel into a 3D
 // texture → live raymarch of the foam field sampled from that texture, using
 // guaranteed-safe step lengths so rays always reach the far side of the cube.
 // Shell, camera, clip plane, help and handoff follow F13LD.tpms v1.1.0.
 // ============================================================================
 
-const APP_VERSION = '0.8.1';   // header, banner and the export's meta.version (kept equal)
+const APP_VERSION = '0.9.0';   // header, banner and the export's meta.version (kept equal)
 const canvas = document.getElementById('c');
 let f13View = null;
 // ==== F13LD-SHADE v1 · shared viewer shading (GLSL). Keep this block byte-identical in every F13LD tool. ====
