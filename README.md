@@ -4,6 +4,8 @@ Lightweight, browser-native tool for building periodic Voronoi and Laguerre foam
 
 Live: https://mshomper.github.io/f13ld.foam
 
+<img width="1440" height="900" alt="F13LD.foam" src="docs/screenshot.png" />
+
 ## Using it
 
 Open `index.html` in a browser with WebGL2 (Chrome, Edge, Firefox, Safari 15+). One file, no build step.
